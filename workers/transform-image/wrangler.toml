@@ -1,0 +1,15 @@
+name = "transform-image"
+main = "index.ts"
+compatibility_date = "2024-01-01"
+
+# KV namespace for storing transformation results
+kv_namespaces = [
+  { binding = "TRANSFORM_RESULTS", id = "802279cd441d4b189691a7a213433d68", preview_id = "398977c3d6d24b349af2d82cdda90a03" }
+]
+
+# Environment variables
+[vars]
+WORKER_URL = "https://transform-image.grovefactor.workers.dev"
+
+# Secrets (set via: wrangler secret put REPLICATE_API_TOKEN)
+# REPLICATE_API_TOKEN = "your_token_here"
