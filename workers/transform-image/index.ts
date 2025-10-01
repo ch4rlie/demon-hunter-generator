@@ -468,6 +468,17 @@ async function handleView(shortId: string, env: Env): Promise<Response> {
         },
       }
     );
+  } catch (error) {
+    console.error("View error:", error);
+    return new Response("Error loading transformation", { status: 500 });
+  }
+}
+
+async function handleUpdateEmail(request: Request, predictionId: string, env: Env): Promise<Response> {
+  try {
+    const body = await request.json();
+    const email = body.email;
+    const name = body.name;
     
     if (!email) {
       return new Response(
@@ -484,12 +495,58 @@ async function handleView(shortId: string, env: Env): Promise<Response> {
     
     // Get existing data
     const existingDataJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    
     if (!existingDataJson) {
-      return new Response("Transformation not found", { status: 404 });
+      return new Response(
+        JSON.stringify({ error: "Prediction not found" }),
+        {
+          status: 404,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
+    
+    const existingData = JSON.parse(existingDataJson);
+    
+    // Update with email
+    existingData.email = email;
+    if (name) {
+      existingData.name = name;
+    }
+    
+    // Save back
+    await env.TRANSFORM_RESULTS.put(
+      predictionId,
+      JSON.stringify(existingData),
+      {
+        expirationTtl: 86400,
+      }
+    );
+    
+    return new Response(
+      JSON.stringify({ success: true }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   } catch (error) {
-    console.error("View error:", error);
-    return new Response("Error loading transformation", { status: 500 });
+    console.error("Update email error:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to update email" }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 }
 
