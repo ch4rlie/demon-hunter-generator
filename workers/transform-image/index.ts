@@ -3,8 +3,9 @@
 
 interface Env {
   REPLICATE_API_TOKEN: string;
-  TRANSFORM_RESULTS: any; // KV Namespace binding
-  WORKER_URL: string; // Your worker's public URL for webhooks
+  TRANSFORM_RESULTS: any;
+  WORKER_URL: string;
+  RESEND_API_KEY: string;
 }
 
 const corsHeaders = {
@@ -24,21 +25,32 @@ export default {
         headers: corsHeaders,
       });
     }
-
     // Route: POST /transform - Submit image for transformation
     if (url.pathname === "/transform" && request.method === "POST") {
       return handleTransform(request, env);
     }
 
-    // Route: GET /status/:id - Check transformation status
-    if (url.pathname.startsWith("/status/") && request.method === "GET") {
+    // Route: GET /status/:id
+    else if (url.pathname.startsWith("/status/")) {
       const predictionId = url.pathname.split("/status/")[1];
       return handleStatus(predictionId, env);
     }
 
     // Route: POST /webhook - Receive Replicate completion webhook
-    if (url.pathname === "/webhook" && request.method === "POST") {
+    else if (url.pathname === "/webhook") {
       return handleWebhook(request, env);
+    }
+
+    // Route: GET /view/:shortId - View result page
+    else if (url.pathname.startsWith("/view/")) {
+      const shortId = url.pathname.split("/view/")[1];
+      return handleView(shortId, env);
+    }
+    
+    // Route: POST /update-email/:predictionId - Update email for notification
+    else if (url.pathname.startsWith("/update-email/")) {
+      const predictionId = url.pathname.split("/update-email/")[1];
+      return handleUpdateEmail(request, predictionId, env);
     }
 
     return new Response(
@@ -58,6 +70,8 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
   try {
     const formData = await request.formData();
     const image = formData.get("image") as File;
+    const email = formData.get("email") as string | null;
+    const name = formData.get("name") as string | null;
 
     if (!image) {
       return new Response(
@@ -106,9 +120,18 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
       );
     }
 
-    // Convert image to base64
+    // Convert image to base64 (chunk-based to avoid stack overflow)
     const imageBuffer = await image.arrayBuffer();
-    const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+    const uint8Array = new Uint8Array(imageBuffer);
+    let binaryString = '';
+    const chunkSize = 8192; // Process in chunks to avoid stack overflow
+    
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    
+    const base64Image = btoa(binaryString);
 
     // K-Pop Demon Hunter transformation prompt
     const prompt = `Transform this person into an elite K-Pop demon hunter character. They should have:
@@ -132,13 +155,13 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "8c41dc7a5b4c91413e2adea83e2e1f3e0ec473d61e25c39e41d1f4f8c5321d88",
+        version: "bytedance/flux-pulid:8baa7ef2255075b46f4d91cd238c21d31181b3e6a864463f967960bb0112525b",
         input: {
           prompt: prompt,
-          image: `data:${image.type};base64,${base64Image}`,
-          guidance_scale: 7.5,
-          num_inference_steps: 30,
-          strength: 0.75,
+          main_face_image: `data:${image.type};base64,${base64Image}`,
+          num_steps: 20,
+          guidance_scale: 4,
+          num_outputs: 1,
         },
         webhook: webhookUrl,
         webhook_events_filter: ["completed"],
@@ -164,17 +187,32 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     }
 
     const prediction = await replicateResponse.json();
+    
+    // Generate short ID for view link
+    const shortId = Math.random().toString(36).substring(2, 8);
 
-    // Store initial status in KV
+    // Store initial prediction in KV with user info
     await env.TRANSFORM_RESULTS.put(
       prediction.id,
       JSON.stringify({
         id: prediction.id,
         status: "processing",
         created_at: new Date().toISOString(),
+        email: email || null,
+        name: name || "Friend",
+        shortId: shortId,
       }),
       {
-        expirationTtl: 3600, // Expire after 1 hour
+        expirationTtl: 86400, // Expire after 24 hours
+      }
+    );
+    
+    // Also store short ID mapping
+    await env.TRANSFORM_RESULTS.put(
+      `short:${shortId}`,
+      prediction.id,
+      {
+        expirationTtl: 86400,
       }
     );
 
@@ -280,20 +318,292 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
       result.imageUrl = payload.output?.[0] || payload.output;
       result.processingTime = payload.metrics?.predict_time;
     } else if (status === "failed") {
-      result.error = payload.error;
+      // Parse error message for user-friendly display
+      const errorMsg = payload.error || "Unknown error";
+      
+      if (errorMsg.includes("facexlib") || errorMsg.includes("align face fail")) {
+        result.error = "No human face detected in the image. Please upload a photo with a clear face.";
+        result.errorType = "no_face_detected";
+      } else if (errorMsg.includes("NSFW") || errorMsg.includes("safety")) {
+        result.error = "Image rejected by safety filter. Please use an appropriate photo.";
+        result.errorType = "safety_filter";
+      } else {
+        result.error = "Processing failed. Please try again with a different image.";
+        result.errorType = "processing_error";
+        result.errorDetails = errorMsg; // Keep original for debugging
+      }
     }
 
+    // Get existing data to retrieve email
+    const existingDataJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    const existingData = existingDataJson ? JSON.parse(existingDataJson) : {};
+    
+    // Merge with existing data
+    const finalResult = { ...existingData, ...result };
+    
     await env.TRANSFORM_RESULTS.put(
       predictionId,
-      JSON.stringify(result),
+      JSON.stringify(finalResult),
       {
-        expirationTtl: 3600, // Expire after 1 hour
+        expirationTtl: 86400, // 24 hours
       }
     );
+
+    // Send email notification if succeeded
+    if (status === "succeeded" && existingData.email) {
+      await sendEmailNotification(env, existingData.email, existingData.name, existingData.shortId);
+    }
 
     return new Response("OK", { status: 200 });
   } catch (error) {
     console.error("Webhook error:", error);
     return new Response("Webhook processing failed", { status: 500 });
+  }
+}
+
+async function handleView(shortId: string, env: Env): Promise<Response> {
+  try {
+    // Get prediction ID from short ID
+    const predictionId = await env.TRANSFORM_RESULTS.get(`short:${shortId}`);
+    
+    if (!predictionId) {
+      return new Response("Result not found or expired", { status: 404 });
+    }
+    
+    // Get result data
+    const resultJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    
+    if (!resultJson) {
+      return new Response("Result not found", { status: 404 });
+    }
+    
+    const result = JSON.parse(resultJson);
+    
+    if (result.status !== "succeeded") {
+      return new Response("Transformation not complete yet", { status: 404 });
+    }
+    
+    // Return HTML page
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your K-Pop Demon Hunter Transformation</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #000000 0%, #1a0000 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          .container {
+            max-width: 800px;
+            text-align: center;
+          }
+          h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            background: linear-gradient(to right, #ff6b35, #f7931e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+          }
+          img {
+            max-width: 100%;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(255, 107, 53, 0.3);
+            margin: 30px 0;
+          }
+          .buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+          }
+          button, a {
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-weight: bold;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+          }
+          .download {
+            background: linear-gradient(to right, #ff6b35, #f7931e);
+            color: white;
+          }
+          .create {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>🔥 Your Demon Hunter is Ready! 🔥</h1>
+          <p style="margin-bottom: 20px; opacity: 0.8;">Hey ${result.name || 'Friend'}, your transformation is complete!</p>
+          <img src="${result.imageUrl}" alt="K-Pop Demon Hunter Transformation" />
+          <div class="buttons">
+            <a href="${result.imageUrl}" download class="download">Download Image</a>
+            <a href="${env.WORKER_URL.replace('/transform', '')}" class="create">Create Your Own</a>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    return new Response(html, {
+      headers: {
+        "Content-Type": "text/html",
+      },
+    });
+  } catch (error) {
+    console.error("View error:", error);
+    return new Response("Error loading result", { status: 500 });
+  }
+}
+
+async function handleUpdateEmail(request: Request, predictionId: string, env: Env): Promise<Response> {
+  try {
+    const body = await request.json();
+    const email = body.email;
+    const name = body.name;
+    
+    if (!email) {
+      return new Response(
+        JSON.stringify({ error: "Email required" }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+    
+    // Get existing data
+    const existingDataJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    
+    if (!existingDataJson) {
+      return new Response(
+        JSON.stringify({ error: "Prediction not found" }),
+        {
+          status: 404,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+    
+    const existingData = JSON.parse(existingDataJson);
+    
+    // Update email and name
+    existingData.email = email;
+    if (name) {
+      existingData.name = name;
+    }
+    
+    // Save updated data
+    await env.TRANSFORM_RESULTS.put(
+      predictionId,
+      JSON.stringify(existingData),
+      {
+        expirationTtl: 86400,
+      }
+    );
+    
+    // If already succeeded, send email immediately
+    if (existingData.status === "succeeded") {
+      await sendEmailNotification(env, email, existingData.name, existingData.shortId);
+    }
+    
+    return new Response(
+      JSON.stringify({ success: true }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Update email error:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to update email" }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+}
+
+async function sendEmailNotification(
+  env: Env,
+  email: string,
+  name: string,
+  shortId: string
+): Promise<void> {
+  try {
+    const viewUrl = `${env.WORKER_URL}/view/${shortId}`;
+    
+    const emailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Demon Hunter <onboarding@resend.dev>",
+        to: [email],
+        subject: "🔥 Your K-Pop Demon Hunter Transformation is Ready!",
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; background-color: #000; color: #fff; padding: 40px; }
+              .container { max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #1a0000 0%, #000 100%); padding: 40px; border-radius: 20px; }
+              h1 { color: #ff6b35; font-size: 32px; margin-bottom: 20px; }
+              .cta-button { display: inline-block; background: linear-gradient(to right, #ff6b35, #f7931e); color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin: 20px 0; }
+              p { line-height: 1.6; font-size: 16px; color: #ccc; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>🔥 Hey ${name}!</h1>
+              <p>Your K-Pop Demon Hunter transformation is complete and it looks <strong>AMAZING</strong>!</p>
+              <p>Click the button below to see your fierce new look:</p>
+              <a href="${viewUrl}" class="cta-button">View My Transformation</a>
+              <p style="margin-top: 30px; font-size: 14px; opacity: 0.7;">This link will expire in 24 hours. Download your image to keep it forever!</p>
+            </div>
+          </body>
+          </html>
+        `,
+      }),
+    });
+    
+    if (!emailResponse.ok) {
+      const errorText = await emailResponse.text();
+      console.error("Resend API error:", errorText);
+    } else {
+      console.log(`Email sent successfully to ${email}`);
+    }
+  } catch (error) {
+    console.error("Error sending email:", error);
   }
 }

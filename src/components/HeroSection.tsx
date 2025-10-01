@@ -4,21 +4,17 @@ import ImageUploader from './ImageUploader';
 
 interface HeroSectionProps {
   onImageUpload: (files: File[]) => void;
+  onEmailSubmit?: (email: string, name?: string) => void;
   isProcessing: boolean;
   processedImages: string[];
 }
 
-export default function HeroSection({
-  onImageUpload,
-  isProcessing,
-  processedImages,
-}: HeroSectionProps) {
+export default function HeroSection({ onImageUpload, onEmailSubmit, isProcessing, processedImages }: HeroSectionProps) {
   const uploadRef = useRef<HTMLDivElement>(null);
 
   const scrollToUpload = () => {
     uploadRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
-
   return (
     <section className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 overflow-hidden">
       {/* Animated background */}
@@ -96,6 +92,7 @@ export default function HeroSection({
       <div ref={uploadRef} className="relative z-10 w-full max-w-4xl mx-auto mt-20 animate-fadeIn delay-700">
         <ImageUploader
           onImageUpload={onImageUpload}
+          onEmailSubmit={onEmailSubmit}
           isProcessing={isProcessing}
           processedImages={processedImages}
         />

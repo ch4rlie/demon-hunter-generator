@@ -22,9 +22,15 @@ export interface StatusResponse {
 /**
  * Submit an image for transformation
  */
-export async function submitTransformation(file: File): Promise<TransformResponse> {
+export async function submitTransformation(file: File, email?: string, name?: string): Promise<TransformResponse> {
   const formData = new FormData();
   formData.append('image', file);
+  if (email) {
+    formData.append('email', email);
+  }
+  if (name) {
+    formData.append('name', name);
+  }
 
   const response = await fetch(`${WORKER_URL}/transform`, {
     method: 'POST',
@@ -100,9 +106,9 @@ export async function pollForCompletion(
 export async function transformImage(
   file: File,
   onProgress?: (status: StatusResponse) => void
-): Promise<string> {
-  // Submit the transformation
-  const submitResponse = await submitTransformation(file);
+): Promise<{ imageUrl: string; predictionId: string }> {
+  // Submit the transformation (without email)
+  const submitResponse = await submitTransformation(file, '', undefined);
 
   // Poll for completion
   const result = await pollForCompletion(
@@ -114,5 +120,8 @@ export async function transformImage(
     throw new Error('No image URL in response');
   }
 
-  return result.imageUrl;
+  return {
+    imageUrl: result.imageUrl,
+    predictionId: submitResponse.predictionId,
+  };
 }

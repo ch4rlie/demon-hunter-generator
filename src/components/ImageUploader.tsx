@@ -1,19 +1,24 @@
-import { Upload, X, Loader2, CheckCircle } from 'lucide-react';
+import { Upload, Loader2, CheckCircle } from 'lucide-react';
 import { useRef, useState, DragEvent } from 'react';
 
 interface ImageUploaderProps {
   onImageUpload: (files: File[]) => void;
+  onEmailSubmit?: (email: string, name?: string) => void;
   isProcessing: boolean;
   processedImages: string[];
 }
 
 export default function ImageUploader({
   onImageUpload,
+  onEmailSubmit,
   isProcessing,
   processedImages,
 }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [emailSubmitted, setEmailSubmitted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: DragEvent<HTMLDivElement>) => {
@@ -52,6 +57,14 @@ export default function ImageUploader({
     const urls = files.map((file) => URL.createObjectURL(file));
     setPreviewUrls(urls);
     onImageUpload(files);
+  };
+  
+  const handleEmailSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (email && onEmailSubmit) {
+      onEmailSubmit(email, name);
+      setEmailSubmitted(true);
+    }
   };
 
   const clearImages = () => {
@@ -119,11 +132,45 @@ export default function ImageUploader({
           </div>
           <div className="space-y-2">
             <h3 className="text-2xl font-bold text-white">Summoning Your Inner Hunter...</h3>
-            <p className="text-gray-400">Our AI is crafting your demon hunter persona</p>
+            <p className="text-gray-400">Our AI is crafting your demon hunter persona (~30 seconds)</p>
           </div>
           <div className="w-full max-w-md mx-auto h-2 bg-black/50 rounded-full overflow-hidden">
             <div className="h-full bg-gradient-to-r from-red-600 to-orange-600 rounded-full animate-loading"></div>
           </div>
+          
+          {!emailSubmitted && onEmailSubmit && (
+            <div className="mt-8 pt-8 border-t border-red-500/20">
+              <form onSubmit={handleEmailSubmit} className="max-w-md mx-auto space-y-4">
+                <p className="text-white text-sm">💌 Want us to email you when it's ready?</p>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com (optional)"
+                  className="w-full px-4 py-3 bg-black/50 border border-red-500/30 rounded-xl text-white placeholder-gray-500 focus:border-red-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name (optional)"
+                  className="w-full px-4 py-3 bg-black/50 border border-red-500/30 rounded-xl text-white placeholder-gray-500 focus:border-red-500 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="w-full px-6 py-3 bg-gradient-to-r from-red-600 to-orange-600 rounded-full font-bold hover:scale-105 transition-transform duration-300"
+                >
+                  Notify Me 📧
+                </button>
+              </form>
+            </div>
+          )}
+          
+          {emailSubmitted && (
+            <div className="mt-8 pt-8 border-t border-red-500/20">
+              <p className="text-green-400">✅ We'll email you at {email} when it's ready!</p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -150,33 +197,7 @@ export default function ImageUploader({
         className="hidden"
       />
 
-      {previewUrls.length > 0 ? (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-bold text-white">Ready to Transform</h3>
-            <button
-              onClick={clearImages}
-              className="p-2 hover:bg-white/10 rounded-full transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {previewUrls.map((url, index) => (
-              <div
-                key={index}
-                className="relative aspect-square rounded-xl overflow-hidden border border-red-500/30"
-              >
-                <img
-                  src={url}
-                  alt={`Preview ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
+      {previewUrls.length > 0 ? null : (
         <div className="text-center space-y-6">
           <div className="relative w-20 h-20 mx-auto">
             <Upload className="w-20 h-20 text-red-500" />
@@ -187,6 +208,9 @@ export default function ImageUploader({
             <h3 className="text-2xl font-bold text-white">Drop Your Photos Here</h3>
             <p className="text-gray-400 max-w-md mx-auto">
               Or click to browse. Supports multiple images. JPG, PNG up to 10MB each.
+            </p>
+            <p className="text-sm text-orange-400 max-w-md mx-auto pt-2">
+              ⚠️ <strong>Important:</strong> Upload photos with clear, visible human faces for best results
             </p>
           </div>
 
