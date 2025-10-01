@@ -46,7 +46,13 @@ function App() {
   };
   
   const handleEmailSubmit = async (email: string, name?: string) => {
-    if (!currentPredictionId) return;
+    if (!currentPredictionId) {
+      console.error('No prediction ID available');
+      alert('Error: Please wait for the transformation to start before submitting email');
+      return;
+    }
+    
+    console.log('Submitting email for prediction:', currentPredictionId);
     
     try {
       const response = await fetch(`${import.meta.env.VITE_WORKER_URL}/update-email/${currentPredictionId}`, {
@@ -58,10 +64,15 @@ function App() {
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Email submission failed:', errorText);
         throw new Error('Failed to save email');
       }
+      
+      console.log('Email submitted successfully');
     } catch (error) {
       console.error('Failed to save email:', error);
+      alert('Failed to save email. You can still see the result on screen!');
     }
   };
 
@@ -78,6 +89,19 @@ function App() {
       <GallerySection />
       <HowItWorksSection />
       <CTASection onImageUpload={handleImageUpload} />
+      
+      {/* Footer with disclaimer */}
+      <footer className="bg-black border-t border-white/10 py-8 px-4">
+        <div className="max-w-4xl mx-auto text-center space-y-4">
+          <p className="text-gray-400 text-sm">
+            © 2025 KpopDemonz.com • AI-Powered Photo Transformation
+          </p>
+          <p className="text-gray-500 text-xs">
+            Not affiliated with any K-pop entertainment companies, agencies, or artists. 
+            All transformations are AI-generated fan art for entertainment purposes only.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
