@@ -5,7 +5,6 @@ import GallerySection from './components/GallerySection';
 import SocialProofFeed from './components/SocialProofFeed';
 import HowItWorksSection from './components/HowItWorksSection';
 import CTASection from './components/CTASection';
-import { transformImage } from './lib/transformApi';
 
 function App() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -20,10 +19,46 @@ function App() {
       const transformedImages: string[] = [];
 
       for (const file of files) {
-        // Transform image without email
-        const result = await transformImage(file);
-        transformedImages.push(result.imageUrl);
-        setCurrentPredictionId(result.predictionId);
+        // Submit transformation and get prediction ID immediately
+        const submitResponse = await fetch(`${import.meta.env.VITE_WORKER_URL}/transform`, {
+          method: 'POST',
+          body: (() => {
+            const formData = new FormData();
+            formData.append('image', file);
+            return formData;
+          })(),
+        });
+
+        if (!submitResponse.ok) {
+          throw new Error('Failed to submit transformation');
+        }
+
+        const { predictionId } = await submitResponse.json();
+        
+        // Set prediction ID immediately so email form can use it
+        setCurrentPredictionId(predictionId);
+
+        // Now poll for completion
+        const pollForResult = async (): Promise<string> => {
+          for (let i = 0; i < 60; i++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const statusResponse = await fetch(`${import.meta.env.VITE_WORKER_URL}/status/${predictionId}`);
+            const statusData = await statusResponse.json();
+            
+            if (statusData.status === 'succeeded' && statusData.imageUrl) {
+              return statusData.imageUrl;
+            }
+            
+            if (statusData.status === 'failed') {
+              throw new Error(statusData.error || 'Transformation failed');
+            }
+          }
+          throw new Error('Transformation timed out');
+        };
+
+        const imageUrl = await pollForResult();
+        transformedImages.push(imageUrl);
       }
 
       setProcessedImages(transformedImages);
