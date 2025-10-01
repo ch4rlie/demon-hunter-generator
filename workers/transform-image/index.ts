@@ -52,6 +52,11 @@ export default {
       const predictionId = url.pathname.split("/update-email/")[1];
       return handleUpdateEmail(request, predictionId, env);
     }
+    
+    // Route: GET /recent - Get recent transformations for social proof
+    else if (url.pathname === "/recent") {
+      return handleRecent(env);
+    }
 
     return new Response(
       JSON.stringify({ error: "Not found" }),
@@ -353,6 +358,11 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     if (status === "succeeded" && existingData.email) {
       await sendEmailNotification(env, existingData.email, existingData.name, existingData.shortId);
     }
+    
+    // Add to public feed if succeeded (for social proof)
+    if (status === "succeeded" && result.imageUrl) {
+      await addToPublicFeed(env, result.imageUrl);
+    }
 
     return new Response("OK", { status: 200 });
   } catch (error) {
@@ -549,6 +559,61 @@ async function handleUpdateEmail(request: Request, predictionId: string, env: En
         },
       }
     );
+  }
+}
+
+async function handleRecent(env: Env): Promise<Response> {
+  try {
+    // Get recent transformations list
+    const feedJson = await env.TRANSFORM_RESULTS.get("public_feed");
+    const feed = feedJson ? JSON.parse(feedJson) : [];
+    
+    return new Response(JSON.stringify({ transformations: feed }), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=60", // Cache for 1 minute
+      },
+    });
+  } catch (error) {
+    console.error("Recent feed error:", error);
+    return new Response(
+      JSON.stringify({ transformations: [] }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+}
+
+async function addToPublicFeed(env: Env, imageUrl: string): Promise<void> {
+  try {
+    // Get existing feed
+    const feedJson = await env.TRANSFORM_RESULTS.get("public_feed");
+    const feed = feedJson ? JSON.parse(feedJson) : [];
+    
+    // Add new transformation at the beginning
+    feed.unshift({
+      imageUrl,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Keep only last 50 transformations
+    const trimmedFeed = feed.slice(0, 50);
+    
+    // Save back to KV
+    await env.TRANSFORM_RESULTS.put(
+      "public_feed",
+      JSON.stringify(trimmedFeed),
+      {
+        expirationTtl: 86400 * 7, // Keep for 7 days
+      }
+    );
+  } catch (error) {
+    console.error("Failed to add to public feed:", error);
   }
 }
 

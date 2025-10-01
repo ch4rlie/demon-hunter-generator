@@ -2,6 +2,7 @@ import { useState } from 'react';
 import HeroSection from './components/HeroSection';
 import FeaturesSection from './components/FeaturesSection';
 import GallerySection from './components/GallerySection';
+import SocialProofFeed from './components/SocialProofFeed';
 import HowItWorksSection from './components/HowItWorksSection';
 import CTASection from './components/CTASection';
 import { transformImage } from './lib/transformApi';
@@ -73,6 +74,7 @@ function App() {
         processedImages={processedImages}
       />
       <FeaturesSection />
+      <SocialProofFeed />
       <GallerySection />
       <HowItWorksSection />
       <CTASection onImageUpload={handleImageUpload} />
