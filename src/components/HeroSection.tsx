@@ -35,7 +35,7 @@ export default function HeroSection({ onImageUpload, onEmailSubmit, isProcessing
         {/* Main heading with more energy */}
         <h1 className="text-5xl md:text-7xl lg:text-8xl font-black leading-tight">
           <span className="block text-white drop-shadow-2xl">
-            From <span className="bg-gradient-to-r from-pink-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">Idol</span> to
+            From <span className="bg-gradient-to-r from-pink-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">Selfie</span> to
           </span>
           <span className="block bg-gradient-to-r from-red-500 via-orange-500 to-red-500 bg-clip-text text-transparent animate-gradient text-6xl md:text-8xl lg:text-9xl">
             DEMON HUNTER
