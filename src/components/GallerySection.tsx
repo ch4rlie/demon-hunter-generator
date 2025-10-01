@@ -2,42 +2,48 @@ import { ArrowRight, Star } from 'lucide-react';
 
 const examples = [
   {
-    before: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=800',
+    before: '/examples/minjun-before.jpg',
+    after: '/examples/minjun-after.webp',
     name: 'Minjun',
     role: 'Shadow Blade',
     rating: 5,
     quote: 'I never knew I could look this fierce!',
   },
   {
-    before: 'https://images.pexels.com/photos/1130626/pexels-photo-1130626.jpeg?auto=compress&cs=tinysrgb&w=800',
+    before: '/examples/yuna-before.jpg',
+    after: '/examples/yuna-after.webp',
     name: 'Yuna',
     role: 'Flame Dancer',
     rating: 5,
     quote: 'My friends thought it was a professional photoshoot.',
   },
   {
-    before: 'https://images.pexels.com/photos/1516680/pexels-photo-1516680.jpeg?auto=compress&cs=tinysrgb&w=800',
+    before: '/examples/jihoon-before.jpg',
+    after: '/examples/jihoon-after.webp',
     name: 'Jihoon',
     role: 'Storm Bringer',
     rating: 5,
     quote: 'This is cooler than any filter out there.',
   },
   {
-    before: 'https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=800',
+    before: '/examples/soyeon-before.jpg',
+    after: '/examples/soyeon-after.webp',
     name: 'Soyeon',
     role: 'Frost Queen',
     rating: 5,
     quote: 'Perfect for my social media profile!',
   },
   {
-    before: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=800',
+    before: '/examples/taehyung-before.jpg',
+    after: '/examples/taehyung-after.webp',
     name: 'Taehyung',
     role: 'Dark Phoenix',
     rating: 5,
     quote: 'The details are absolutely insane.',
   },
   {
-    before: 'https://images.pexels.com/photos/1858175/pexels-photo-1858175.jpeg?auto=compress&cs=tinysrgb&w=800',
+    before: '/examples/chaeyoung-before.jpg',
+    after: '/examples/chaeyoung-after.webp',
     name: 'Chaeyoung',
     role: 'Eclipse Warrior',
     rating: 5,
@@ -71,25 +77,32 @@ export default function GallerySection() {
             >
               {/* Image Container */}
               <div className="relative aspect-[3/4] overflow-hidden">
+                {/* Before Image */}
                 <img
                   src={example.before}
-                  alt={example.name}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  alt={`${example.name} - Before`}
+                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0"
+                />
+                
+                {/* After Image */}
+                <img
+                  src={example.after}
+                  alt={`${example.name} - After`}
+                  className="absolute inset-0 w-full h-full object-cover transition-all duration-500 opacity-0 group-hover:opacity-100 group-hover:scale-105"
                 />
 
                 {/* Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-500"></div>
 
                 {/* Before/After indicator */}
-                <div className="absolute top-4 left-4 px-3 py-1 bg-black/70 backdrop-blur-sm rounded-full text-xs font-bold text-white border border-white/20">
-                  TRANSFORMED
+                <div className="absolute top-4 left-4 px-3 py-1 bg-black/70 backdrop-blur-sm rounded-full text-xs font-bold text-white border border-white/20 transition-all duration-300">
+                  <span className="group-hover:hidden">BEFORE</span>
+                  <span className="hidden group-hover:inline">AFTER</span>
                 </div>
 
-                {/* Arrow indicator */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-orange-600 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/50">
-                    <ArrowRight className="w-8 h-8 text-white" />
-                  </div>
+                {/* Hover hint */}
+                <div className="absolute top-4 right-4 px-3 py-1 bg-orange-600/80 backdrop-blur-sm rounded-full text-xs font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  ✨ TRANSFORMED
                 </div>
 
                 {/* Bottom info */}
