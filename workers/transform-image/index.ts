@@ -346,6 +346,7 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     // Merge with existing data
     const finalResult = { ...existingData, ...result };
     
+    // Save to KV
     await env.TRANSFORM_RESULTS.put(
       predictionId,
       JSON.stringify(finalResult),
@@ -354,14 +355,16 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
       }
     );
 
-    // Send email notification if succeeded
-    if (status === "succeeded" && existingData.email) {
-      await sendEmailNotification(env, existingData.email, existingData.name, existingData.shortId);
-    }
-    
     // Add to public feed if succeeded (for social proof)
     if (status === "succeeded" && result.imageUrl) {
       await addToPublicFeed(env, result.imageUrl);
+    }
+
+    // Send email notification AFTER everything is saved
+    if (status === "succeeded" && existingData.email && existingData.shortId) {
+      // Small delay to ensure KV is fully committed
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await sendEmailNotification(env, existingData.email, existingData.name, existingData.shortId);
     }
 
     return new Response("OK", { status: 200 });
@@ -380,64 +383,56 @@ async function handleView(shortId: string, env: Env): Promise<Response> {
       return new Response("Result not found or expired", { status: 404 });
     }
     
-    // Get result data
+    // Get transformation result
     const resultJson = await env.TRANSFORM_RESULTS.get(predictionId);
     
     if (!resultJson) {
-      return new Response("Result not found", { status: 404 });
+      return new Response("Transformation not complete yet. Please try again in a moment.", { status: 404 });
     }
     
     const result = JSON.parse(resultJson);
     
-    if (result.status !== "succeeded") {
-      return new Response("Transformation not complete yet", { status: 404 });
+    if (!result.imageUrl) {
+      return new Response("Transformation not complete yet. Please try again in a moment.", { status: 404 });
     }
     
-    // Return HTML page
-    const html = `
-      <!DOCTYPE html>
+    // Return simple HTML page with the image
+    return new Response(
+      `<!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Your K-Pop Demon Hunter Transformation</title>
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #000000 0%, #1a0000 100%);
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a0000 0%, #000 100%);
+            font-family: Arial, sans-serif;
             color: white;
-            min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 20px;
-          }
-          .container {
-            max-width: 800px;
-            text-align: center;
+            min-height: 100vh;
           }
           h1 {
-            font-size: 3em;
+            color: #ff6b35;
             margin-bottom: 20px;
-            background: linear-gradient(to right, #ff6b35, #f7931e);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
           }
           img {
-            max-width: 100%;
+            max-width: 90%;
+            max-height: 70vh;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(255, 107, 53, 0.3);
-            margin: 30px 0;
+            box-shadow: 0 10px 40px rgba(255, 107, 53, 0.3);
           }
-          .buttons {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-          }
-          button, a {
-            padding: 15px 30px;
+          .cta {
+            margin-top: 30px;
+            padding: 15px 40px;
+            background: linear-gradient(to right, #ff6b35, #f7931e);
+            color: white;
+            text-decoration: none;
             border-radius: 50px;
             font-weight: bold;
             text-decoration: none;
@@ -463,29 +458,16 @@ async function handleView(shortId: string, env: Env): Promise<Response> {
           <img src="${result.imageUrl}" alt="K-Pop Demon Hunter Transformation" />
           <div class="buttons">
             <a href="${result.imageUrl}" download class="download">Download Image</a>
-            <a href="${env.WORKER_URL.replace('/transform', '')}" class="create">Create Your Own</a>
+            <a href="https://kpopdemonz.com" class="create">Create Your Own</a>
           </div>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    return new Response(html, {
-      headers: {
-        "Content-Type": "text/html",
-      },
-    });
-  } catch (error) {
-    console.error("View error:", error);
-    return new Response("Error loading result", { status: 500 });
-  }
-}
-
-async function handleUpdateEmail(request: Request, predictionId: string, env: Env): Promise<Response> {
-  try {
-    const body = await request.json();
-    const email = body.email;
-    const name = body.name;
+        </body>
+        </html>`,
+      {
+        headers: {
+          "Content-Type": "text/html",
+        },
+      }
+    );
     
     if (!email) {
       return new Response(
@@ -502,63 +484,12 @@ async function handleUpdateEmail(request: Request, predictionId: string, env: En
     
     // Get existing data
     const existingDataJson = await env.TRANSFORM_RESULTS.get(predictionId);
-    
     if (!existingDataJson) {
-      return new Response(
-        JSON.stringify({ error: "Prediction not found" }),
-        {
-          status: 404,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      return new Response("Transformation not found", { status: 404 });
     }
-    
-    const existingData = JSON.parse(existingDataJson);
-    
-    // Update email and name
-    existingData.email = email;
-    if (name) {
-      existingData.name = name;
-    }
-    
-    // Save updated data
-    await env.TRANSFORM_RESULTS.put(
-      predictionId,
-      JSON.stringify(existingData),
-      {
-        expirationTtl: 86400,
-      }
-    );
-    
-    // If already succeeded, send email immediately
-    if (existingData.status === "succeeded") {
-      await sendEmailNotification(env, email, existingData.name, existingData.shortId);
-    }
-    
-    return new Response(
-      JSON.stringify({ success: true }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
   } catch (error) {
-    console.error("Update email error:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to update email" }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    console.error("View error:", error);
+    return new Response("Error loading transformation", { status: 500 });
   }
 }
 
@@ -624,7 +555,7 @@ async function sendEmailNotification(
   shortId: string
 ): Promise<void> {
   try {
-    const viewUrl = `${env.WORKER_URL}/view/${shortId}`;
+    const viewUrl = `https://kpopdemonz.com/view/${shortId}`;
     
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
