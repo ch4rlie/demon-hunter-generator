@@ -173,7 +173,7 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "92c80b39a2b6b94d8167e7d724ae1e986a17352e760d81e68450eac3dd0b6e98",
+        version: "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
         input: {
           image: `data:${image.type};base64,${base64Image}`,
           prompt: prompt,
