@@ -64,19 +64,34 @@ WORKER_URL = "https://transform-image.your-subdomain.workers.dev"
 
 Then redeploy so the webhook URL is correct.
 
-### 6. Deploy
+### 7. Deploy
 
 ```bash
 wrangler deploy
 ```
 
-### 7. Test Locally (Optional)
+## Local Development
 
-```bash
-wrangler dev
-```
+To run the worker locally using `wrangler dev`, you need to provide local environment variables.
 
-Note: Webhooks won't work locally unless you use a tunnel like ngrok.
+1.  Create a file named `.dev.vars` in the `workers/transform-image` directory.
+2.  Add your secrets to this file. It should look like this:
+
+    ```
+    REPLICATE_API_TOKEN="your_replicate_api_token"
+    HCAPTCHA_SECRET_KEY="your_hcaptcha_secret_key"
+    RESEND_API_KEY="your_resend_api_key"
+    ```
+
+3.  Run the local development server:
+
+    ```bash
+    wrangler dev
+    ```
+
+Wrangler will automatically load the variables from `.dev.vars` when you run the `dev` command. This file is included in `.gitignore`, so your secrets will not be committed to your repository.
+
+Note: Webhooks from the Replicate API will not work with your local server unless you use a tunneling service like `cloudflared` or `ngrok`.
 
 ## API Usage
 

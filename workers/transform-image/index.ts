@@ -1,11 +1,24 @@
 // Cloudflare Worker for K-Pop Demon Hunter Image Transformation
 // Uses Replicate API with webhook for async completion
 
+import { KVNamespace } from '@cloudflare/workers-types';
+
 interface Env {
   REPLICATE_API_TOKEN: string;
-  TRANSFORM_RESULTS: any;
+  TRANSFORM_RESULTS: KVNamespace;
   WORKER_URL: string;
   RESEND_API_KEY: string;
+  HCAPTCHA_SECRET_KEY: string;
+}
+
+interface ReplicateWebhookPayload {
+  id: string;
+  status: 'processing' | 'succeeded' | 'failed';
+  output?: string[];
+  error?: string;
+  metrics?: {
+    predict_time?: number;
+  };
 }
 
 const corsHeaders = {
@@ -77,6 +90,45 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     const image = formData.get("image") as File;
     const email = formData.get("email") as string | null;
     const name = formData.get("name") as string | null;
+    const captchaToken = formData.get("captchaToken") as string | null;
+
+    if (!captchaToken) {
+      return new Response(
+        JSON.stringify({ error: "CAPTCHA token is missing" }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // Verify the CAPTCHA token
+    const captchaFormData = new FormData();
+    captchaFormData.append("secret", env.HCAPTCHA_SECRET_KEY);
+    captchaFormData.append("response", captchaToken);
+
+    const captchaResponse = await fetch("https://api.hcaptcha.com/siteverify", {
+      method: "POST",
+      body: captchaFormData,
+    });
+
+    const captchaResult = await captchaResponse.json();
+
+    if (!captchaResult.success) {
+      return new Response(
+        JSON.stringify({ error: "CAPTCHA verification failed" }),
+        {
+          status: 403,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
 
     if (!image) {
       return new Response(
@@ -301,7 +353,7 @@ async function handleStatus(predictionId: string, env: Env): Promise<Response> {
 
 async function handleWebhook(request: Request, env: Env): Promise<Response> {
   try {
-    const payload = await request.json();
+    const payload: ReplicateWebhookPayload = await request.json();
 
     console.log("Webhook received:", JSON.stringify(payload));
 
@@ -313,7 +365,16 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     }
 
     // Store the result in KV
-    const result: any = {
+    const result: {
+      id: string;
+      status: 'processing' | 'succeeded' | 'failed';
+      updated_at: string;
+      imageUrl?: string;
+      processingTime?: number;
+      error?: string;
+      errorType?: string;
+      errorDetails?: string;
+    } = {
       id: predictionId,
       status: status,
       updated_at: new Date().toISOString(),

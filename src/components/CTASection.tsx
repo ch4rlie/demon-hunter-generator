@@ -1,10 +1,8 @@
 import { Upload, Sparkles, Zap } from 'lucide-react';
 
-interface CTASectionProps {
-  onImageUpload: (files: File[]) => void;
-}
+interface CTASectionProps {}
 
-export default function CTASection({ onImageUpload }: CTASectionProps) {
+export default function CTASection({}: CTASectionProps) {
   const handleButtonClick = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };

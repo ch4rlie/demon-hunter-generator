@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 import HeroSection from './components/HeroSection';
 import FeaturesSection from './components/FeaturesSection';
 import GallerySection from './components/GallerySection';
@@ -10,6 +11,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedImages, setProcessedImages] = useState<string[]>([]);
   const [currentPredictionId, setCurrentPredictionId] = useState<string | null>(null);
+  const captchaRef = useRef<HCaptcha>(null);
 
   const handleImageUpload = async (files: File[]) => {
     setIsProcessing(true);
@@ -19,12 +21,17 @@ function App() {
       const transformedImages: string[] = [];
 
       for (const file of files) {
+        const captchaToken = await captchaRef.current?.execute();
+        if (!captchaToken) {
+          throw new Error('hCaptcha execution failed');
+        }
         // Submit transformation and get prediction ID immediately
         const submitResponse = await fetch(`${import.meta.env.VITE_WORKER_URL}/transform`, {
           method: 'POST',
           body: (() => {
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('captchaToken', captchaToken);
             return formData;
           })(),
         });
@@ -75,7 +82,8 @@ function App() {
       } else {
         alert('❌ Transformation Failed\n\n' + errorMessage + '\n\nTip: Try a different photo with better lighting and a clear face.');
       }
-    } finally {
+    }
+    finally {
       setIsProcessing(false);
     }
   };
@@ -113,6 +121,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-black text-white overflow-x-hidden">
+      <HCaptcha
+        ref={captchaRef}
+        sitekey="2cc02a96-b858-43b4-bcf0-9b9c08209cbe"
+        size="invisible"
+      />
       <HeroSection
         onImageUpload={handleImageUpload}
         onEmailSubmit={handleEmailSubmit}
@@ -123,7 +136,7 @@ function App() {
       <SocialProofFeed />
       <GallerySection />
       <HowItWorksSection />
-      <CTASection onImageUpload={handleImageUpload} />
+      <CTASection />
       
       {/* Footer with disclaimer */}
       <footer className="bg-black border-t border-white/10 py-8 px-4">
