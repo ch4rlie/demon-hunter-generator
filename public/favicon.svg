@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#000000" stroke="#dc2626" stroke-width="2"/>
+  
+  <!-- Fire/demon horn left -->
+  <path d="M 30 35 Q 25 25 30 20 Q 32 25 30 30 Z" fill="#dc2626"/>
+  
+  <!-- Fire/demon horn right -->
+  <path d="M 70 35 Q 75 25 70 20 Q 68 25 70 30 Z" fill="#dc2626"/>
+  
+  <!-- Eyes glow -->
+  <ellipse cx="38" cy="45" rx="4" ry="6" fill="#f97316"/>
+  <ellipse cx="62" cy="45" rx="4" ry="6" fill="#f97316"/>
+  
+  <!-- Inner glow -->
+  <circle cx="38" cy="45" r="2" fill="#fff" opacity="0.8"/>
+  <circle cx="62" cy="45" r="2" fill="#fff" opacity="0.8"/>
+  
+  <!-- Demon mouth/mark -->
+  <path d="M 35 60 Q 50 70 65 60" stroke="#dc2626" stroke-width="3" fill="none" stroke-linecap="round"/>
+  
+  <!-- Flame accent bottom -->
+  <path d="M 50 75 Q 45 85 50 90 Q 52 85 50 80 Z" fill="#f97316" opacity="0.7"/>
+</svg>
