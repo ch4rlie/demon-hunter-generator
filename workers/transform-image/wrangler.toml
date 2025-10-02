@@ -7,6 +7,17 @@ kv_namespaces = [
   { binding = "TRANSFORM_RESULTS", id = "802279cd441d4b189691a7a213433d68", preview_id = "398977c3d6d24b349af2d82cdda90a03" }
 ]
 
+# D1 Database for permanent user storage
+[[d1_databases]]
+binding = "DB"
+database_name = "demon-hunter-db"
+database_id = "4b7f2ef3-c686-43ff-baae-79f7dd0d91ca"
+
+# R2 Bucket for image storage (training data)
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "demon-hunter-images"
+
 # Environment variables
 [vars]
 WORKER_URL = "https://transform-image.grovefactor.workers.dev"

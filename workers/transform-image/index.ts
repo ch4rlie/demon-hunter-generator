@@ -6,6 +6,8 @@ interface Env {
   TRANSFORM_RESULTS: any;
   WORKER_URL: string;
   RESEND_API_KEY: string;
+  DB: any; // D1Database
+  IMAGES: any; // R2Bucket
 }
 
 const corsHeaders = {
@@ -56,6 +58,11 @@ export default {
     // Route: GET /recent - Get recent transformations for social proof
     else if (url.pathname === "/recent") {
       return handleRecent(env);
+    }
+    
+    // Route: GET /admin/emails - Export email list (add auth later)
+    else if (url.pathname === "/admin/emails") {
+      return handleExportEmails(env);
     }
 
     return new Response(
@@ -195,6 +202,15 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     
     // Generate short ID for view link
     const shortId = Math.random().toString(36).substring(2, 8);
+    
+    // Save original image to R2 for training data
+    const originalKey = `originals/${prediction.id}.${image.type.split('/')[1]}`;
+    await env.IMAGES.put(originalKey, imageBuffer, {
+      httpMetadata: {
+        contentType: image.type,
+      },
+    });
+    console.log(`Saved original image to R2: ${originalKey}`);
 
     // Store initial prediction in KV with user info
     await env.TRANSFORM_RESULTS.put(
@@ -206,11 +222,23 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         email: email || null,
         name: name || "Friend",
         shortId: shortId,
+        originalImageR2Key: originalKey,
       }),
       {
         expirationTtl: 86400, // Expire after 24 hours
       }
     );
+    
+    // Store email permanently if provided (for marketing/updates)
+    if (email) {
+      await storeUserEmail(env, email, name || "");
+    }
+    
+    // Store initial transformation record in D1
+    await env.DB.prepare(`
+      INSERT INTO transformations (prediction_id, user_email, original_image_r2_key, status)
+      VALUES (?1, ?2, ?3, 'processing')
+    `).bind(prediction.id, email || null, originalKey).run();
     
     // Also store short ID mapping
     await env.TRANSFORM_RESULTS.put(
@@ -355,16 +383,21 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
       }
     );
 
-    // Add to public feed if succeeded (for social proof)
+    // Process successful transformations
     if (status === "succeeded" && result.imageUrl) {
+      // Add to public feed (for social proof)
       await addToPublicFeed(env, result.imageUrl);
-    }
-
-    // Send email notification AFTER everything is saved
-    if (status === "succeeded" && existingData.email && existingData.shortId) {
-      // Small delay to ensure KV is fully committed
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await sendEmailNotification(env, existingData.email, existingData.name, existingData.shortId);
+      
+      // Download and store transformed image in R2, then update D1
+      const transformedR2Key = await downloadAndStoreImage(env, predictionId, result.imageUrl);
+      await updateTransformationInD1(env, predictionId, existingData.email, result.imageUrl, transformedR2Key, payload.metrics?.predict_time);
+      
+      // Send email notification ONLY AFTER everything is saved (R2 + D1)
+      if (existingData.email && existingData.shortId) {
+        // Wait for R2/D1 to fully commit (increased delay for R2 upload)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sendEmailNotification(env, existingData.email, existingData.name, existingData.shortId);
+      }
     }
 
     return new Response("OK", { status: 200 });
@@ -376,25 +409,48 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
 
 async function handleView(shortId: string, env: Env): Promise<Response> {
   try {
-    // Get prediction ID from short ID
-    const predictionId = await env.TRANSFORM_RESULTS.get(`short:${shortId}`);
+    // Get prediction ID from short ID (check KV first, then D1)
+    let predictionId = await env.TRANSFORM_RESULTS.get(`short:${shortId}`);
     
+    // If not in KV (expired), try to find in D1 by reconstructing from shortId
     if (!predictionId) {
-      return new Response("Result not found or expired", { status: 404 });
+      // Query D1 for transformation by any field we have
+      // Note: We need to store shortId in D1 to make this work
+      return new Response("Result not found or expired. Results are only kept for 24 hours.", { status: 404 });
     }
     
-    // Get transformation result
-    const resultJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    // Try KV first (fast, temporary)
+    let resultJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    let result: any = null;
+    let imageUrl = null;
+    let userName = "Friend";
     
-    if (!resultJson) {
+    if (resultJson) {
+      // Found in KV (recent transformation)
+      result = JSON.parse(resultJson);
+      imageUrl = result.imageUrl;
+      userName = result.name || "Friend";
+    }
+    
+    // Also check D1 for permanent record (in case KV expired or for R2 URLs)
+    try {
+      const dbResult = await env.DB.prepare(
+        "SELECT transformed_image_url, replicate_output_url FROM transformations WHERE prediction_id = ?"
+      ).bind(predictionId).first();
+      
+      if (dbResult) {
+        // Use R2 URL if available, otherwise Replicate URL
+        imageUrl = dbResult.transformed_image_url || dbResult.replicate_output_url;
+      }
+    } catch (error) {
+      console.error("Error fetching from D1:", error);
+    }
+    
+    if (!imageUrl) {
       return new Response("Transformation not complete yet. Please try again in a moment.", { status: 404 });
     }
     
-    const result = JSON.parse(resultJson);
-    
-    if (!result.imageUrl) {
-      return new Response("Transformation not complete yet. Please try again in a moment.", { status: 404 });
-    }
+    result = result || { name: userName };
     
     // Return simple HTML page with the image
     return new Response(
@@ -454,10 +510,10 @@ async function handleView(shortId: string, env: Env): Promise<Response> {
       <body>
         <div class="container">
           <h1>🔥 Your Demon Hunter is Ready! 🔥</h1>
-          <p style="margin-bottom: 20px; opacity: 0.8;">Hey ${result.name || 'Friend'}, your transformation is complete!</p>
-          <img src="${result.imageUrl}" alt="K-Pop Demon Hunter Transformation" />
+          <p style="margin-bottom: 20px; opacity: 0.8;">Hey ${userName}, your transformation is complete!</p>
+          <img src="${imageUrl}" alt="K-Pop Demon Hunter Transformation" />
           <div class="buttons">
-            <a href="${result.imageUrl}" download class="download">Download Image</a>
+            <a href="${imageUrl}" download class="download">Download Image</a>
             <a href="https://kpopdemonz.com" class="create">Create Your Own</a>
           </div>
         </body>
@@ -605,6 +661,118 @@ async function addToPublicFeed(env: Env, imageUrl: string): Promise<void> {
   }
 }
 
+async function handleExportEmails(env: Env): Promise<Response> {
+  try {
+    // Get all users from D1
+    const { results } = await env.DB.prepare(
+      "SELECT email, name, first_seen, last_seen, transform_count FROM users ORDER BY created_at DESC"
+    ).all();
+    
+    return new Response(JSON.stringify({
+      total: results.length,
+      users: results,
+      exportedAt: new Date().toISOString(),
+    }, null, 2), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("Export emails error:", error);
+    return new Response(
+      JSON.stringify({ 
+        error: "Failed to export emails",
+        message: error instanceof Error ? error.message : "Unknown error"
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+}
+
+async function storeUserEmail(env: Env, email: string, name: string): Promise<void> {
+  try {
+    // Insert or update user in D1
+    await env.DB.prepare(`
+      INSERT INTO users (email, name, first_seen, last_seen, transform_count)
+      VALUES (?1, ?2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+      ON CONFLICT(email) DO UPDATE SET
+        name = ?2,
+        last_seen = CURRENT_TIMESTAMP,
+        transform_count = transform_count + 1
+    `).bind(email, name || null).run();
+    
+    console.log(`Stored user email in D1: ${email}`);
+  } catch (error) {
+    console.error("Failed to store user email in D1:", error);
+  }
+}
+
+async function downloadAndStoreImage(env: Env, predictionId: string, replicateUrl: string): Promise<string> {
+  try {
+    // Download image from Replicate
+    const imageResponse = await fetch(replicateUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to download image: ${imageResponse.status}`);
+    }
+    
+    const imageBuffer = await imageResponse.arrayBuffer();
+    
+    // Determine file extension from URL or content-type
+    const contentType = imageResponse.headers.get('content-type') || 'image/webp';
+    const extension = contentType.split('/')[1] || 'webp';
+    
+    // Store in R2
+    const transformedKey = `transformed/${predictionId}.${extension}`;
+    await env.IMAGES.put(transformedKey, imageBuffer, {
+      httpMetadata: {
+        contentType: contentType,
+      },
+    });
+    
+    console.log(`Downloaded and stored transformed image: ${transformedKey}`);
+    return transformedKey;
+  } catch (error) {
+    console.error("Failed to download/store transformed image:", error);
+    return ''; // Return empty string on failure
+  }
+}
+
+async function updateTransformationInD1(
+  env: Env,
+  predictionId: string,
+  userEmail: string | null,
+  replicateUrl: string,
+  r2Key: string,
+  processingTime: number | undefined
+): Promise<void> {
+  try {
+    // Generate public R2 URL (will work after you add public bucket domain)
+    const publicUrl = r2Key ? `https://images.kpopdemonz.com/${r2Key}` : replicateUrl;
+    
+    await env.DB.prepare(`
+      UPDATE transformations 
+      SET transformed_image_url = ?1,
+          transformed_image_r2_key = ?2,
+          replicate_output_url = ?3,
+          status = 'succeeded',
+          completed_at = CURRENT_TIMESTAMP,
+          processing_time = ?4
+      WHERE prediction_id = ?5
+    `).bind(publicUrl, r2Key, replicateUrl, processingTime || null, predictionId).run();
+    
+    console.log(`Updated transformation in D1: ${predictionId}`);
+  } catch (error) {
+    console.error("Failed to update transformation in D1:", error);
+  }
+}
+
 async function sendEmailNotification(
   env: Env,
   email: string,
@@ -621,7 +789,7 @@ async function sendEmailNotification(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Demon Hunter <onboarding@resend.dev>",
+        from: "K-Pop Demonz <noreply@mail.kpopdemonz.com>",
         to: [email],
         subject: "🔥 Your K-Pop Demon Hunter Transformation is Ready!",
         html: `
