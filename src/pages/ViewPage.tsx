@@ -22,34 +22,18 @@ export default function ViewPage() {
       }
 
       try {
-        // Fetch from worker
-        const response = await fetch(`${import.meta.env.VITE_WORKER_URL}/view/${shortId}`);
+        // Fetch transformation data from JSON API
+        const response = await fetch(`${import.meta.env.VITE_WORKER_URL}/api/transformation/${shortId}`);
         
         if (!response.ok) {
-          throw new Error('Transformation not found or expired');
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || 'Transformation not found or expired');
         }
 
-        // The worker returns HTML, but we need JSON for the React app
-        // Let's make a direct DB query instead
-        const text = await response.text();
+        const data = await response.json();
         
-        // Parse image URL from HTML (temporary solution)
-        const imgMatch = text.match(/src="([^"]+)"/);
-        const nameMatch = text.match(/Hey ([^,]+),/);
-        
-        if (imgMatch && imgMatch[1]) {
-          setImageUrl(imgMatch[1]);
-        }
-        
-        if (nameMatch && nameMatch[1]) {
-          setUserName(nameMatch[1]);
-        } else {
-          setUserName('Friend');
-        }
-        
-        if (!imgMatch) {
-          throw new Error('Could not load image');
-        }
+        setImageUrl(data.imageUrl);
+        setUserName(data.userName || 'Friend');
         
       } catch (err) {
         console.error('Error loading transformation:', err);

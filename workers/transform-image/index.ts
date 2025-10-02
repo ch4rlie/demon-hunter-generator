@@ -49,6 +49,12 @@ export default {
       return handleView(shortId, env);
     }
     
+    // Route: GET /api/transformation/:shortId - Get transformation data as JSON
+    else if (url.pathname.startsWith("/api/transformation/")) {
+      const shortId = url.pathname.split("/api/transformation/")[1];
+      return handleTransformationJSON(shortId, env);
+    }
+    
     // Route: POST /update-email/:predictionId - Update email for notification
     else if (url.pathname.startsWith("/update-email/")) {
       const predictionId = url.pathname.split("/update-email/")[1];
@@ -527,6 +533,89 @@ async function handleView(shortId: string, env: Env): Promise<Response> {
   } catch (error) {
     console.error("View error:", error);
     return new Response("Error loading transformation", { status: 500 });
+  }
+}
+
+async function handleTransformationJSON(shortId: string, env: Env): Promise<Response> {
+  try {
+    // Get prediction ID from short ID
+    const predictionId = await env.TRANSFORM_RESULTS.get(`short:${shortId}`);
+    
+    if (!predictionId) {
+      return new Response(
+        JSON.stringify({ error: "Transformation not found or expired" }),
+        {
+          status: 404,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+    
+    // Try KV first
+    let imageUrl = null;
+    let userName = "Friend";
+    
+    const resultJson = await env.TRANSFORM_RESULTS.get(predictionId);
+    if (resultJson) {
+      const result = JSON.parse(resultJson);
+      imageUrl = result.imageUrl;
+      userName = result.name || "Friend";
+    }
+    
+    // Check D1 for permanent record
+    try {
+      const dbResult = await env.DB.prepare(
+        "SELECT transformed_image_url, replicate_output_url FROM transformations WHERE prediction_id = ?"
+      ).bind(predictionId).first();
+      
+      if (dbResult) {
+        imageUrl = dbResult.transformed_image_url || dbResult.replicate_output_url;
+      }
+    } catch (error) {
+      console.error("Error fetching from D1:", error);
+    }
+    
+    if (!imageUrl) {
+      return new Response(
+        JSON.stringify({ error: "Transformation not complete yet" }),
+        {
+          status: 404,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+    
+    return new Response(
+      JSON.stringify({
+        imageUrl,
+        userName,
+        shortId,
+      }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Transformation JSON error:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to load transformation" }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 }
 
