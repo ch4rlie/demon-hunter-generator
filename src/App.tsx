@@ -17,6 +17,11 @@ function HomePage() {
     setIsProcessing(true);
     setProcessedImages([]);
 
+    // Track upload event
+    if (window.plausible) {
+      window.plausible('Image Upload', { props: { count: files.length } });
+    }
+
     try {
       const transformedImages: string[] = [];
 
@@ -64,6 +69,11 @@ function HomePage() {
       }
 
       setProcessedImages(transformedImages);
+      
+      // Track successful transformation
+      if (window.plausible) {
+        window.plausible('Transformation Success', { props: { count: transformedImages.length } });
+      }
     } catch (error) {
       console.error('Error transforming images:', error);
       
@@ -107,6 +117,11 @@ function HomePage() {
       }
       
       console.log('Email submitted successfully');
+      
+      // Track email signup
+      if (window.plausible) {
+        window.plausible('Email Signup');
+      }
     } catch (error) {
       console.error('Failed to save email:', error);
       alert('Failed to save email. You can still see the result on screen!');

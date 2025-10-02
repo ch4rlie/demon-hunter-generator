@@ -16,6 +16,11 @@ export default function ViewPage() {
         return;
       }
 
+      // Track view page visit
+      if (window.plausible) {
+        window.plausible('View Transformation');
+      }
+
       try {
         // Fetch from worker
         const response = await fetch(`${import.meta.env.VITE_WORKER_URL}/view/${shortId}`);
@@ -107,6 +112,11 @@ export default function ViewPage() {
           <a
             href={imageUrl}
             download
+            onClick={() => {
+              if (window.plausible) {
+                window.plausible('Download Image');
+              }
+            }}
             className="bg-gradient-to-r from-orange-600 to-red-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:scale-105 transition"
           >
             Download Image
