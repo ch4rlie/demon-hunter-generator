@@ -18,5 +18,8 @@
     "ai"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "react-router-dom": "^7.9.3"
+  }
 }

@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import HeroSection from './components/HeroSection';
 import FeaturesSection from './components/FeaturesSection';
 import GallerySection from './components/GallerySection';
 import SocialProofFeed from './components/SocialProofFeed';
 import HowItWorksSection from './components/HowItWorksSection';
 import CTASection from './components/CTASection';
+import ViewPage from './pages/ViewPage';
 
-function App() {
+function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedImages, setProcessedImages] = useState<string[]>([]);
   const [currentPredictionId, setCurrentPredictionId] = useState<string | null>(null);
@@ -138,6 +140,17 @@ function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/view/:shortId" element={<ViewPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
