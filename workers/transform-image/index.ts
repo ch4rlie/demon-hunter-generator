@@ -173,11 +173,11 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "fofr/face-to-many:92c80b39a2b6b94d8167e7d724ae1e986a17352e760d81e68450eac3dd0b6e98",
+        version: "92c80b39a2b6b94d8167e7d724ae1e986a17352e760d81e68450eac3dd0b6e98",
         input: {
           image: `data:${image.type};base64,${base64Image}`,
           prompt: prompt,
-          style: "3D", // Options: 3D, emoji, video game, pixels, clay, toy
+          style: "3d", // Options: 3d, emoji, video game, pixels, clay, toy
         },
         webhook: webhookUrl,
         webhook_events_filter: ["completed"],
