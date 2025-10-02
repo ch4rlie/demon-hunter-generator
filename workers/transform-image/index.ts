@@ -360,14 +360,17 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
       // Parse error message for user-friendly display
       const errorMsg = payload.error || "Unknown error";
       
-      if (errorMsg.includes("facexlib") || errorMsg.includes("align face fail")) {
-        result.error = "No human face detected in the image. Please upload a photo with a clear face.";
+      // Log the full error for debugging
+      console.log("Replicate error:", errorMsg);
+      
+      if (errorMsg.includes("facexlib") || errorMsg.includes("align face fail") || errorMsg.includes("face detector")) {
+        result.error = "No human face detected in the image. The AI model requires a clear, front-facing portrait. This doesn't mean your photo is bad - the model is very strict.";
         result.errorType = "no_face_detected";
       } else if (errorMsg.includes("NSFW") || errorMsg.includes("safety")) {
         result.error = "Image rejected by safety filter. Please use an appropriate photo.";
         result.errorType = "safety_filter";
       } else {
-        result.error = "Processing failed. Please try again with a different image.";
+        result.error = `Processing failed: ${errorMsg}. This might be a temporary issue with the AI service.`;
         result.errorType = "processing_error";
         result.errorDetails = errorMsg; // Keep original for debugging
       }

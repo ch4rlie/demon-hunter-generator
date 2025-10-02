@@ -80,12 +80,17 @@ function HomePage() {
       // Show user-friendly error message
       const errorMessage = error instanceof Error ? error.message : 'Failed to transform images. Please try again.';
       
+      // Log the full error for debugging
+      console.log('Full error details:', errorMessage);
+      
       if (errorMessage.includes('No human face detected')) {
-        alert('⚠️ No Face Detected\n\nPlease upload a photo with a clear, visible human face. Make sure:\n• The face is well-lit\n• The person is looking at the camera\n• The face is not obscured');
+        alert('⚠️ Face Detection Issue\n\nThe AI had trouble detecting a face in your photo.\n\nTips:\n• Use a front-facing portrait\n• Ensure good lighting\n• Face should be clearly visible\n• Try a different photo\n\nNote: Some perfectly good photos may be rejected by the AI model.');
       } else if (errorMessage.includes('safety filter')) {
-        alert('⚠️ Image Not Allowed\n\nYour image was rejected by our safety filter. Please use an appropriate photo.');
+        alert('⚠️ Image Rejected\n\nYour image was rejected by the content filter. Please try a different photo.');
+      } else if (errorMessage.includes('timed out')) {
+        alert('⏱️ Processing Timeout\n\nThe transformation took too long. The AI service might be busy.\n\nPlease try again in a moment.');
       } else {
-        alert('❌ Transformation Failed\n\n' + errorMessage + '\n\nTip: Try a different photo with better lighting and a clear face.');
+        alert('❌ Transformation Failed\n\n' + errorMessage + '\n\nThis might be a temporary issue with the AI service. Please try again with the same or a different photo.');
       }
     } finally {
       setIsProcessing(false);
