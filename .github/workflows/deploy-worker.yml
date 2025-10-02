@@ -29,3 +29,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: 'workers/transform-image'
+          command: deploy
+          packageManager: npm
