@@ -138,18 +138,23 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
       );
     }
 
-    // Convert image to base64 (chunk-based to avoid stack overflow)
+    // Get image buffer
     const imageBuffer = await image.arrayBuffer();
-    const uint8Array = new Uint8Array(imageBuffer);
-    let binaryString = '';
-    const chunkSize = 8192; // Process in chunks to avoid stack overflow
     
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.subarray(i, i + chunkSize);
-      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-    }
+    // Generate temporary prediction ID for R2 storage
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     
-    const base64Image = btoa(binaryString);
+    // Save original image to R2 first (so we can provide a URL to Replicate)
+    const originalKey = `originals/${tempId}.${image.type.split('/')[1]}`;
+    await env.IMAGES.put(originalKey, imageBuffer, {
+      httpMetadata: {
+        contentType: image.type,
+      },
+    });
+    
+    // Generate public URL for the image (Replicate needs a URL, not base64)
+    const imageUrl = `https://images.kpopdemonz.com/${originalKey}`;
+    console.log(`Uploaded image to R2: ${imageUrl}`);
 
     // K-Pop Demon Hunter transformation prompt - optimized for InstantID
     const prompt = `Korean demon hunter from Netflix K-drama, cinematic portrait, professional photography, fierce intense gaze with glowing eyes, sleek black hair with vibrant red and silver streaks, modern tactical streetwear with leather jacket and metallic armor pieces, asymmetric Korean fashion design, supernatural dark fantasy aesthetic, dramatic rim lighting with red and orange tones, mystical energy aura, battle-ready confident expression, high contrast moody atmosphere, K-pop idol meets action hero styling, sharp focus, 8k quality, professional studio lighting, dark urban fantasy background`;
@@ -164,16 +169,13 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        // InstantID - Better face detection + custom prompts
-        version: "9af0cb10c5e213e5864e88e818781ea173dc8b897167b991de48667e1ac3f542",
+        version: "2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789",
         input: {
-          image: `data:${image.type};base64,${base64Image}`,
+          image: imageUrl,
           prompt: prompt,
-          negative_prompt: "blurry, low quality, distorted, deformed face, bad anatomy, ugly, cartoon, anime, illustration, painting, drawing, unrecognizable face, western style, bright cheerful lighting",
-          num_inference_steps: 40,
-          guidance_scale: 7.5,
-          ip_adapter_scale: 0.8,
-          controlnet_conditioning_scale: 0.8,
+          negative_prompt: "(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured, blurry, bad anatomy, cartoon, anime, western style, bright cheerful lighting",
+          guidance_scale: 5,
+          sdxl_weights: "protovision-xl-high-fidel",
         },
         webhook: webhookUrl,
         webhook_events_filter: ["completed"],
@@ -202,15 +204,6 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     
     // Generate short ID for view link
     const shortId = Math.random().toString(36).substring(2, 8);
-    
-    // Save original image to R2 for training data
-    const originalKey = `originals/${prediction.id}.${image.type.split('/')[1]}`;
-    await env.IMAGES.put(originalKey, imageBuffer, {
-      httpMetadata: {
-        contentType: image.type,
-      },
-    });
-    console.log(`Saved original image to R2: ${originalKey}`);
 
     // Store initial prediction in KV with user info
     await env.TRANSFORM_RESULTS.put(
