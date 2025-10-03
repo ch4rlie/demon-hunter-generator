@@ -151,17 +151,8 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     
     const base64Image = btoa(binaryString);
 
-    // K-Pop Demon Hunter transformation prompt
-    const prompt = `Transform this person into an elite K-Pop demon hunter character. They should have:
-    - Striking, intense eyes with a supernatural glow
-    - Sleek, stylish hair with vibrant highlights (red, orange, or silver streaks)
-    - Modern tactical outfit with K-Pop fashion elements (leather, metallic accents, asymmetric designs)
-    - Dramatic lighting with red and orange tones
-    - Battle-ready pose and confident expression
-    - Mystical energy effects or aura around them
-    - Professional idol-quality photography aesthetic
-    - Sharp, high-contrast styling
-    Make them look like they could be on a K-Pop album cover meets supernatural action hero. Keep their facial features recognizable but enhanced to look more fierce and powerful.`;
+    // K-Pop Demon Hunter transformation prompt - optimized for InstantID
+    const prompt = `Korean demon hunter from Netflix K-drama, cinematic portrait, professional photography, fierce intense gaze with glowing eyes, sleek black hair with vibrant red and silver streaks, modern tactical streetwear with leather jacket and metallic armor pieces, asymmetric Korean fashion design, supernatural dark fantasy aesthetic, dramatic rim lighting with red and orange tones, mystical energy aura, battle-ready confident expression, high contrast moody atmosphere, K-pop idol meets action hero styling, sharp focus, 8k quality, professional studio lighting, dark urban fantasy background`;
 
     // Create prediction with webhook
     const webhookUrl = `${env.WORKER_URL}/webhook`;
@@ -178,9 +169,11 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         input: {
           image: `data:${image.type};base64,${base64Image}`,
           prompt: prompt,
-          negative_prompt: "blurry, low quality, distorted, deformed face",
-          num_inference_steps: 30,
-          guidance_scale: 5,
+          negative_prompt: "blurry, low quality, distorted, deformed face, bad anatomy, ugly, cartoon, anime, illustration, painting, drawing, unrecognizable face, western style, bright cheerful lighting",
+          num_inference_steps: 40,
+          guidance_scale: 7.5,
+          ip_adapter_scale: 0.8,
+          controlnet_conditioning_scale: 0.8,
         },
         webhook: webhookUrl,
         webhook_events_filter: ["completed"],
