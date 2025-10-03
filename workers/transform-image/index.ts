@@ -173,11 +173,14 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
+        // InstantID - Better face detection + custom prompts
+        version: "9af0cb10c5e213e5864e88e818781ea173dc8b897167b991de48667e1ac3f542",
         input: {
           image: `data:${image.type};base64,${base64Image}`,
           prompt: prompt,
-          style: "3d", // Options: 3d, emoji, video game, pixels, clay, toy
+          negative_prompt: "blurry, low quality, distorted, deformed face",
+          num_inference_steps: 30,
+          guidance_scale: 5,
         },
         webhook: webhookUrl,
         webhook_events_filter: ["completed"],
