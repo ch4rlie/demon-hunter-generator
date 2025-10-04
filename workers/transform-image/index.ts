@@ -70,6 +70,11 @@ export default {
     else if (url.pathname === "/admin/emails") {
       return handleExportEmails(env);
     }
+    
+    // Route: POST /admin/cleanup - Delete all user data (DANGEROUS)
+    else if (url.pathname === "/admin/cleanup" && request.method === "POST") {
+      return handleCleanup(env);
+    }
 
     return new Response(
       JSON.stringify({ error: "Not found" }),
@@ -924,5 +929,101 @@ async function sendEmailNotification(
     }
   } catch (error) {
     console.error("Error sending email:", error);
+  }
+}
+
+async function handleCleanup(env: Env): Promise<Response> {
+  try {
+    const deletionStats = {
+      r2_originals: 0,
+      r2_transformed: 0,
+      kv_keys: 0,
+      db_transformations: 0,
+      db_users: 0,
+    };
+
+    // 1. Delete all R2 objects (originals and transformed)
+    console.log("Deleting R2 objects...");
+    
+    // List and delete originals
+    const originalsListing = await env.IMAGES.list({ prefix: "originals/" });
+    for (const object of originalsListing.objects) {
+      await env.IMAGES.delete(object.key);
+      deletionStats.r2_originals++;
+    }
+    
+    // List and delete transformed images
+    const transformedListing = await env.IMAGES.list({ prefix: "transformed/" });
+    for (const object of transformedListing.objects) {
+      await env.IMAGES.delete(object.key);
+      deletionStats.r2_transformed++;
+    }
+
+    // 2. Delete all KV entries
+    console.log("Deleting KV entries...");
+    
+    // Get all transformation records from D1 to find prediction IDs
+    const { results: transformations } = await env.DB.prepare(
+      "SELECT prediction_id FROM transformations"
+    ).all();
+    
+    for (const t of transformations) {
+      const predictionId = (t as any).prediction_id;
+      await env.TRANSFORM_RESULTS.delete(predictionId);
+      deletionStats.kv_keys++;
+      
+      // Also try to delete short ID mappings (we don't have them in DB, so this is best effort)
+      // They will expire naturally anyway
+    }
+    
+    // Delete public feed
+    await env.TRANSFORM_RESULTS.delete("public_feed");
+    deletionStats.kv_keys++;
+
+    // 3. Delete all D1 records
+    console.log("Deleting D1 records...");
+    
+    // Delete transformations
+    const transformResult = await env.DB.prepare(
+      "DELETE FROM transformations"
+    ).run();
+    deletionStats.db_transformations = transformResult.meta.changes || 0;
+    
+    // Delete users
+    const usersResult = await env.DB.prepare(
+      "DELETE FROM users"
+    ).run();
+    deletionStats.db_users = usersResult.meta.changes || 0;
+
+    console.log("Cleanup complete:", deletionStats);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "All user data has been deleted",
+        stats: deletionStats,
+      }, null, 2),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Cleanup error:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Cleanup failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 }
