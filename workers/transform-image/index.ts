@@ -8,13 +8,40 @@ interface Env {
   RESEND_API_KEY: string;
   DB: any; // D1Database
   IMAGES: any; // R2Bucket
+  ADMIN_API_KEY?: string; // Optional admin authentication
 }
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Key",
 };
+
+// Check if request is authorized for admin endpoints
+function isAuthorized(request: Request, env: Env): boolean {
+  // If no admin key is set, allow access (backward compatibility)
+  if (!env.ADMIN_API_KEY) {
+    return true;
+  }
+  
+  const authHeader = request.headers.get("Authorization");
+  const adminKeyHeader = request.headers.get("X-Admin-Key");
+  
+  // Check Bearer token
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.substring(7);
+    if (token === env.ADMIN_API_KEY) {
+      return true;
+    }
+  }
+  
+  // Check X-Admin-Key header
+  if (adminKeyHeader === env.ADMIN_API_KEY) {
+    return true;
+  }
+  
+  return false;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -66,13 +93,25 @@ export default {
       return handleRecent(env);
     }
     
-    // Route: GET /admin/emails - Export email list (add auth later)
+    // Route: GET /admin/emails - Export email list (requires auth)
     else if (url.pathname === "/admin/emails") {
+      if (!isAuthorized(request, env)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return handleExportEmails(env);
     }
     
-    // Route: POST /admin/cleanup - Delete all user data (DANGEROUS)
+    // Route: POST /admin/cleanup - Delete all user data (DANGEROUS - requires auth)
     else if (url.pathname === "/admin/cleanup" && request.method === "POST") {
+      if (!isAuthorized(request, env)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return handleCleanup(env);
     }
 
