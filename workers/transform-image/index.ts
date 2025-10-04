@@ -365,7 +365,22 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     };
 
     if (status === "succeeded") {
-      result.imageUrl = payload.output?.[0] || payload.output;
+      // Nano Banana returns output as a FileOutput object with url() method
+      // But in webhook it's just the URL string or array of URLs
+      let imageUrl = null;
+      
+      if (Array.isArray(payload.output)) {
+        imageUrl = payload.output[0];
+      } else if (typeof payload.output === 'string') {
+        imageUrl = payload.output;
+      } else if (payload.output?.url) {
+        imageUrl = payload.output.url;
+      }
+      
+      console.log("Parsed image URL:", imageUrl);
+      console.log("Raw output:", JSON.stringify(payload.output));
+      
+      result.imageUrl = imageUrl;
       result.processingTime = payload.metrics?.predict_time;
     } else if (status === "failed") {
       // Parse error message for user-friendly display
