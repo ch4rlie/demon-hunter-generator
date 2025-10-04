@@ -138,29 +138,40 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
       );
     }
 
-    // Get image buffer
+    // Convert image to base64 data URI
     const imageBuffer = await image.arrayBuffer();
+    const uint8Array = new Uint8Array(imageBuffer);
+    let binaryString = '';
+    const chunkSize = 8192;
     
-    // Generate temporary prediction ID for R2 storage
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
     
-    // Save original image to R2 first (so we can provide a URL to Replicate)
-    const originalKey = `originals/${tempId}.${image.type.split('/')[1]}`;
-    await env.IMAGES.put(originalKey, imageBuffer, {
-      httpMetadata: {
-        contentType: image.type,
-      },
-    });
-    
-    // Generate public URL for the image (Replicate needs a URL, not base64)
-    const imageUrl = `https://images.kpopdemonz.com/${originalKey}`;
-    console.log(`Uploaded image to R2: ${imageUrl}`);
+    const base64Image = btoa(binaryString);
+    const dataUri = `data:${image.type};base64,${base64Image}`;
 
-    // K-Pop Demon Hunter transformation prompt - optimized for InstantID
-    const prompt = `Korean demon hunter from Netflix K-drama, cinematic portrait, professional photography, fierce intense gaze with glowing eyes, sleek black hair with vibrant red and silver streaks, modern tactical streetwear with leather jacket and metallic armor pieces, asymmetric Korean fashion design, supernatural dark fantasy aesthetic, dramatic rim lighting with red and orange tones, mystical energy aura, battle-ready confident expression, high contrast moody atmosphere, K-pop idol meets action hero styling, sharp focus, 8k quality, professional studio lighting, dark urban fantasy background`;
-
+    // K-Pop Demon Hunter transformation prompt for Nano Banana
+    const prompt = `
+    Transform this person into a K-Pop Demon Hunter hero from a Netflix-style fantasy anime series. Create a cinematic hero portrait in a poster-style composition, perfect for sharing on social media.
+    Theme: A K-pop idol in a dark urban fantasy world, blending modern fashion with supernatural power.
+    Keep the persons face recognizable while stylizing it in high-detail anime realism. Enhance clarity, lighting, and detail — reimagine low-quality or casual selfies as professional, polished character portraits. Give them a confident, heroic facial expression with strong presence.
+    Outfit: A fusion of K-pop stage fashion and fantasy demon hunter armor, with layered jackets, glowing accessories, leather belts, metallic textures, jewelry, and modern tech-inspired elements. Add glowing runes, magical aura, or enchanted details to the armor.
+    Include a mystical weapon such as a glowing katana, dual blades, or energy-infused scythe. Incorporate energy effects like floating runes, sparks, magical mist, or glowing trails.
+    Replace the original background with an urban fantasy cityscape — neon-lit skyline, stormy skies, glowing sigils, or supernatural energy swirling around. The scene should feel epic and cinematic, like a promotional poster for a fantasy anime.
+    Use dramatic cinematic lighting with neon tones such as purple, blue, and pink. Apply strong contrast, glowing highlights, and rim light around hair and armor for a heroic silhouette.
+    Art style: Netflix-quality anime realism, high-detail fantasy illustration, poster composition with the hero centered and visually striking.
+    Output format: social-media-ready portrait (1:1 or 1200x630 aspect ratio). Clean, polished, and ready for posting without additional edits. No text, watermarks, or overlays — only the character art.
+    `;
     // Create prediction with webhook
     const webhookUrl = `${env.WORKER_URL}/webhook`;
+    
+    // Reference images from the K-Pop Demon Hunter show for style consistency
+    const styleReferenceImages = [
+      "https://kpopdemonz.com/prompt-helpers/kpop1.webp",
+      "https://kpopdemonz.com/prompt-helpers/kpop-demon-hunters-billboard-1800.webp",
+    ];
     
     const replicateResponse = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
@@ -169,13 +180,12 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789",
+        version: "google/nano-banana",
         input: {
-          image: imageUrl,
           prompt: prompt,
-          negative_prompt: "(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured, blurry, bad anatomy, cartoon, anime, western style, bright cheerful lighting",
-          guidance_scale: 5,
-          sdxl_weights: "protovision-xl-high-fidel",
+          image_input: [dataUri, ...styleReferenceImages],
+          aspect_ratio: "match_input_image",
+          output_format: "jpg",
         },
         webhook: webhookUrl,
         webhook_events_filter: ["completed"],
@@ -204,6 +214,15 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     
     // Generate short ID for view link
     const shortId = Math.random().toString(36).substring(2, 8);
+    
+    // Save original image to R2 for training data
+    const originalKey = `originals/${prediction.id}.${image.type.split('/')[1]}`;
+    await env.IMAGES.put(originalKey, imageBuffer, {
+      httpMetadata: {
+        contentType: image.type,
+      },
+    });
+    console.log(`Saved original image to R2: ${originalKey}`);
 
     // Store initial prediction in KV with user info
     await env.TRANSFORM_RESULTS.put(
