@@ -27,8 +27,8 @@ const features = [
   },
   {
     icon: Clock,
-    title: 'Instant Results',
-    description: 'No waiting around. Upload and transform in under 30 seconds. Ready for social media immediately.',
+    title: '30 Second Transform',
+    description: 'Quick AI processing delivers your demon hunter transformation in about 30 seconds.',
     gradient: 'from-green-500 to-emerald-500',
   },
   {
@@ -41,7 +41,7 @@ const features = [
 
 export default function FeaturesSection() {
   return (
-    <section className="relative py-32 px-4 overflow-hidden">
+    <section className="relative py-16 md:py-24 px-4 overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-black via-red-950/10 to-black"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(220,38,38,0.08),transparent_70%)]"></div>

@@ -134,6 +134,7 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     const image = formData.get("image") as File;
     const email = formData.get("email") as string | null;
     const name = formData.get("name") as string | null;
+    const style = (formData.get("style") as string) || "kpop"; // Default to kpop if not specified
 
     if (!image) {
       return new Response(
@@ -195,40 +196,132 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     
     const base64Image = btoa(binaryString);
     const dataUri = `data:${image.type};base64,${base64Image}`;
+    
+    // Upload user image to R2 first to get a public URL (Nano Banana requires URLs, not data URIs)
+    const tempImageKey = `temp/${Date.now()}-${Math.random().toString(36).substring(7)}.${image.type.split('/')[1]}`;
+    await env.IMAGES.put(tempImageKey, imageBuffer, {
+      httpMetadata: {
+        contentType: image.type,
+      },
+    });
+    const userImageUrl = `https://images.kpopdemonz.com/${tempImageKey}`;
+    console.log(`Uploaded temp image to R2: ${tempImageKey}`);
 
-    // K-Pop Demon Hunter transformation prompt for Nano Banana
-    const prompt = `
-    Transform this person into a K-Pop Demon Hunter hero from a Netflix-style fantasy anime series. Create a cinematic hero portrait in a poster-style composition, perfect for sharing on social media.
-    Theme: A K-pop idol in a dark urban fantasy world, blending modern fashion with supernatural power.
-    Keep the persons face recognizable while stylizing it in high-detail anime realism. Enhance clarity, lighting, and detail — reimagine low-quality or casual selfies as professional, polished character portraits. Give them a confident, heroic facial expression with strong presence.
-    Outfit: A fusion of K-pop stage fashion and fantasy demon hunter armor, with layered jackets, glowing accessories, leather belts, metallic textures, jewelry, and modern tech-inspired elements. Add glowing runes, magical aura, or enchanted details to the armor.
-    Include a mystical weapon such as a glowing katana, dual blades, or energy-infused scythe. Incorporate energy effects like floating runes, sparks, magical mist, or glowing trails.
-    Replace the original background with an urban fantasy cityscape — neon-lit skyline, stormy skies, glowing sigils, or supernatural energy swirling around. The scene should feel epic and cinematic, like a promotional poster for a fantasy anime.
-    Use dramatic cinematic lighting with neon tones such as purple, blue, and pink. Apply strong contrast, glowing highlights, and rim light around hair and armor for a heroic silhouette.
-    Art style: Netflix-quality anime realism, high-detail fantasy illustration, poster composition with the hero centered and visually striking.
-    Output format: social-media-ready portrait (1:1 or 1200x630 aspect ratio). Clean, polished, and ready for posting without additional edits. No text, watermarks, or overlays — only the character art.
-    `;
+    // Style-specific prompts and reference images
+    const kpopPrompts = [
+      // Variation 1: K-Pop idol glamour
+      `Close-up portrait of a glamorous K-Pop idol with supernatural demon hunter powers. IMPORTANT: Face and upper body only, head and shoulders composition.
+      Transform into a stylish K-pop star with ethereal beauty, glowing eyes, and mystical aura. Keep facial features recognizable.
+      Style: HIGH FASHION K-pop idol aesthetic - sleek, polished, glamorous. Vibrant colored hair (purple, pink, blue, or silver), perfect makeup with glowing accents, flawless skin.
+      Outfit: Stylish modern fashion - designer jacket, elegant collar, metallic accessories, jewelry, trendy K-pop stage outfit.
+      Background: Neon-lit urban cityscape, colorful lights, mystical particles, vibrant and energetic atmosphere.
+      Lighting: Soft glamour lighting with neon accents (purple/pink/blue), glowing highlights, polished and clean aesthetic.
+      Mood: Confident, stylish, idol-like, glamorous, NOT gritty or battle-worn.
+      Composition: Beauty portrait framing, face fills frame, shallow depth of field.`,
+      
+      // Variation 2: Heroic portrait
+      `Cinematic headshot portrait of a K-Pop Demon Hunter hero. FRAME: Head and shoulders only, close-up on the face.
+      Transform into a supernatural warrior with piercing glowing eyes and confident expression. Maintain recognizable facial features.
+      Hair: Styled with dramatic volume, colored streaks (choose: electric blue, crimson red, or silver white).
+      Makeup/Effects: Intense eye makeup, glowing tattoos or runes on face/neck, mystical energy emanating from eyes.
+      Attire: Tactical collar, armored shoulder piece with glowing details visible in frame.
+      Setting: Moody atmospheric background with supernatural mist, neon city lights bokeh.
+      Lighting: Three-point dramatic lighting with colored gels, strong key light on face, rim light creating halo effect.`,
+      
+      // Variation 3: Fierce close-up
+      `Extreme close-up portrait of a demon hunter character, K-pop aesthetic. CRITICAL: Face must dominate the frame, minimal body visible.
+      Face transformation: Add supernatural intensity - glowing irises, dramatic contouring, battle-ready expression. Keep original face structure.
+      Details: Windswept hair with neon highlights, mystical face markings, intense smokey eye makeup.
+      Accessories: Futuristic earpiece or headset, high-tech collar visible at bottom of frame.
+      Atmosphere: Dark fantasy with floating embers or energy particles around the face, shallow depth of field.
+      Color palette: Deep shadows with pops of neon (magenta, cyan, or amber), cinematic color grading.
+      Framing: Portrait orientation, face centered, dramatic angle (slightly from below for heroic feel).`,
+      
+      // Variation 4: Character poster style
+      `Character portrait poster for K-Pop Demon Hunter series. COMPOSITION: Bust shot, focus heavily on face and expression.
+      Subject: Transform into a charismatic demon hunter with supernatural features - glowing eyes, ethereal aura, fierce determination.
+      Styling: Modern K-pop fashion meets fantasy armor - visible elements include ornate collar, shoulder armor with LED accents.
+      Hair & Makeup: Bold hair color (vivid purple, electric blue, or platinum with colored tips), dramatic stage makeup enhanced with mystical glow.
+      Effects: Magical energy wisps around the head, glowing runes floating near face, supernatural mist.
+      Background: Blurred urban fantasy cityscape with neon signs, creating bokeh effect to keep focus on face.
+      Lighting: Studio-quality dramatic lighting with colored backlighting, face well-lit with strong definition.`,
+    ];
+    
+    const hunterPrompts = [
+      // Variation 1: Warrior focus
+      `Close-up portrait of a fierce Demon Hunter warrior. CRITICAL: Face and upper body only, tight head-and-shoulders framing.
+      Transform into a battle-hardened hunter with intense eyes, war paint, and supernatural power. Maintain recognizable facial features.
+      Style: Dark warrior aesthetic with tactical gear. Add battle scars, glowing eyes, fierce expression.
+      Outfit: Combat armor, tactical vest with demon hunter insignia, weathered leather, metal plating.
+      Background: Dark apocalyptic setting with fire, smoke, or supernatural energy.
+      Lighting: Harsh dramatic lighting, orange/red tones from flames, strong shadows creating intensity.
+      Composition: Portrait framing, face dominates the image, shallow depth of field.`,
+      
+      // Variation 2: Battle-ready hunter
+      `Cinematic headshot of a Demon Hunter in combat mode. FRAME: Close-up on face and shoulders only.
+      Transform into a supernatural warrior with glowing battle marks and fierce determination. Keep face recognizable.
+      Details: War paint or glowing runes on face, intense glowing eyes, determined expression.
+      Gear: Heavy armor pieces visible on shoulders, tactical straps, weathered combat gear.
+      Atmosphere: Dark battlefield with embers, smoke, or mystical energy swirling.
+      Lighting: Fire-lit dramatic lighting, strong rim light, orange and red tones.
+      Framing: Tight portrait, face fills frame, cinematic depth of field.`,
+      
+      // Variation 3: Dark hunter portrait
+      `Extreme close-up portrait of a demon slayer. IMPORTANT: Face must dominate, minimal body visible.
+      Face transformation: Add battle-worn intensity - glowing eyes, dark markings, fierce warrior expression. Maintain face structure.
+      Details: Dark tactical face paint, glowing scars or runes, intense stare, weathered look.
+      Equipment: Heavy armor collar, tactical gear visible at frame bottom.
+      Setting: Dark apocalyptic environment with fire glow or supernatural darkness.
+      Color palette: Dark with orange/red fire glow, deep shadows, high contrast.
+      Composition: Portrait orientation, face centered and large in frame.`,
+      
+      // Variation 4: Hunter character poster
+      `Character portrait of a legendary Demon Hunter. COMPOSITION: Bust shot, heavy focus on face.
+      Subject: Transform into an elite hunter with supernatural combat abilities - glowing eyes, battle scars, commanding presence.
+      Appearance: Tactical combat gear, heavy armor pieces, demon hunter insignia, weathered from battle.
+      Details: Face markings or scars, intense eyes with supernatural glow, fierce expression.
+      Effects: Smoke, embers, or dark energy around the figure.
+      Background: Dark battlefield or apocalyptic ruins, blurred to emphasize face.
+      Lighting: Dramatic fire-lit or moonlit atmosphere, strong contrast, face well-defined.`,
+    ];
+    
+    // Select prompts and reference images based on style
+    const promptVariations = style === 'hunter' ? hunterPrompts : kpopPrompts;
+    const prompt = promptVariations[Math.floor(Math.random() * promptVariations.length)];
+    
+    // Log the selected style for debugging
+    console.log(`Selected style: ${style}`);
+    console.log(`Using ${style === 'hunter' ? 'hunter' : 'kpop'} prompts and references`);
+    
     // Create prediction with webhook
     const webhookUrl = `${env.WORKER_URL}/webhook`;
     
-    // Reference images from the K-Pop Demon Hunter show for style consistency
-    const styleReferenceImages = [
-      "https://kpopdemonz.com/prompt-helpers/kpop1.webp",
-      "https://kpopdemonz.com/prompt-helpers/kpop-demon-hunters-billboard-1800.webp",
-    ];
+    // Reference images based on selected style
+    const styleReferenceImages = style === 'hunter' 
+      ? [
+          "https://kpopdemonz.com/prompt-helpers/hunters.avif",
+          "https://kpopdemonz.com/prompt-helpers/hunters2.webp",
+        ]
+      : [
+          "https://kpopdemonz.com/prompt-helpers/pop2.webp",
+          "https://kpopdemonz.com/prompt-helpers/pop3.webp",
+        ];
     
-    const replicateResponse = await fetch("https://api.replicate.com/v1/predictions", {
+    console.log(`Reference images:`, styleReferenceImages);
+    console.log(`User image URL:`, userImageUrl);
+    console.log(`Prompt:`, prompt.substring(0, 100) + '...');
+    
+    // Use Replicate's model endpoint
+    const replicateResponse = await fetch("https://api.replicate.com/v1/models/google/nano-banana/predictions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.REPLICATE_API_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "google/nano-banana",
         input: {
           prompt: prompt,
-          image_input: [dataUri, ...styleReferenceImages],
-          aspect_ratio: "match_input_image",
+          image_input: [userImageUrl, ...styleReferenceImages],
           output_format: "jpg",
         },
         webhook: webhookUrl,
@@ -239,6 +332,13 @@ async function handleTransform(request: Request, env: Env): Promise<Response> {
     if (!replicateResponse.ok) {
       const errorText = await replicateResponse.text();
       console.error("Replicate API error:", errorText);
+      console.error("Request body was:", JSON.stringify({
+        input: {
+          prompt: prompt.substring(0, 100),
+          image_input: [userImageUrl, ...styleReferenceImages],
+          output_format: "jpg",
+        }
+      }, null, 2));
       return new Response(
         JSON.stringify({
           error: "Failed to start transformation",

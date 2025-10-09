@@ -2,10 +2,12 @@ import { Upload, Loader2, CheckCircle } from 'lucide-react';
 import { useRef, useState, DragEvent } from 'react';
 
 interface ImageUploaderProps {
-  onImageUpload: (files: File[]) => void;
+  onImageUpload: (files: File[], style: 'kpop' | 'hunter') => void;
   onEmailSubmit?: (email: string, name?: string) => void;
   isProcessing: boolean;
   processedImages: string[];
+  currentStyle?: 'kpop' | 'hunter';
+  originalFile?: File;
 }
 
 export default function ImageUploader({
@@ -13,12 +15,15 @@ export default function ImageUploader({
   onEmailSubmit,
   isProcessing,
   processedImages,
+  currentStyle,
+  originalFile,
 }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [emailSubmitted, setEmailSubmitted] = useState(false);
+  const [selectedStyle, setSelectedStyle] = useState<'kpop' | 'hunter' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: DragEvent<HTMLDivElement>) => {
@@ -54,9 +59,13 @@ export default function ImageUploader({
   };
 
   const handleFiles = (files: File[]) => {
+    if (!selectedStyle) {
+      alert('Please select a style first!');
+      return;
+    }
     const urls = files.map((file) => URL.createObjectURL(file));
     setPreviewUrls(urls);
-    onImageUpload(files);
+    onImageUpload(files, selectedStyle);
   };
   
   const handleEmailSubmit = (e: React.FormEvent) => {
@@ -169,10 +178,24 @@ export default function ImageUploader({
           ))}
         </div>
 
-        <div className="flex justify-center pt-4">
+        <div className="flex flex-col sm:flex-row justify-center gap-3 pt-4">
+          {/* Try other style button */}
+          {currentStyle && originalFile && (
+            <button
+              onClick={() => {
+                const otherStyle = currentStyle === 'kpop' ? 'hunter' : 'kpop';
+                onImageUpload([originalFile], otherStyle);
+              }}
+              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full font-bold hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <span>{currentStyle === 'kpop' ? '🔥' : '✨'}</span>
+              Try {currentStyle === 'kpop' ? 'Hunter' : 'K-Pop'} Style
+            </button>
+          )}
+          
           <button
             onClick={clearImages}
-            className="px-8 py-4 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full font-bold hover:bg-white/10 transition-all duration-300"
+            className="px-8 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full font-bold hover:bg-white/10 transition-all duration-300"
           >
             Transform Another Photo
           </button>
@@ -183,8 +206,29 @@ export default function ImageUploader({
 
   if (isProcessing) {
     return (
-      <div className="bg-gradient-to-br from-red-950/30 to-orange-950/30 backdrop-blur-md border border-red-500/30 rounded-3xl p-12">
-        <div className="text-center space-y-6">
+      <div className="space-y-6">
+        {/* Show existing processed images while generating new one */}
+        {processedImages.length > 0 && (
+          <div className="grid grid-cols-1 gap-6">
+            {processedImages.map((url, index) => (
+              <div key={index} className="space-y-4">
+                <div className="relative group rounded-2xl overflow-hidden border border-green-500/30 shadow-lg shadow-green-500/20">
+                  <img
+                    src={url}
+                    alt={`Processed ${index + 1}`}
+                    className="w-full h-auto object-cover"
+                  />
+                  <div className="absolute top-2 right-2 bg-green-500/90 text-white text-xs px-2 py-1 rounded-full">
+                    ✓ Complete
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="bg-gradient-to-br from-red-950/30 to-orange-950/30 backdrop-blur-md border border-red-500/30 rounded-3xl p-12">
+          <div className="text-center space-y-6">
           <div className="relative w-24 h-24 mx-auto">
             <Loader2 className="w-24 h-24 text-red-500 animate-spin" />
             <div className="absolute inset-0 bg-red-500/20 rounded-full blur-xl animate-pulse"></div>
@@ -231,6 +275,7 @@ export default function ImageUploader({
             </div>
           )}
         </div>
+        </div>
       </div>
     );
   }
@@ -241,9 +286,9 @@ export default function ImageUploader({
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
-      className={`relative bg-gradient-to-br from-red-950/20 to-orange-950/20 backdrop-blur-md border-2 border-dashed rounded-3xl p-12 transition-all duration-300 ${
+      className={`relative bg-gradient-to-br from-red-950/20 to-orange-950/20 backdrop-blur-md border-2 border-dashed rounded-2xl p-6 md:p-8 transition-all duration-300 ${
         dragActive
-          ? 'border-red-500 bg-red-950/40 scale-105'
+          ? 'border-red-500 bg-red-950/40 scale-[1.02]'
           : 'border-red-500/30 hover:border-red-500/50'
       }`}
     >
@@ -257,28 +302,96 @@ export default function ImageUploader({
       />
 
       {previewUrls.length > 0 ? null : (
-        <div className="text-center space-y-6">
-          <div className="relative w-20 h-20 mx-auto">
-            <Upload className="w-20 h-20 text-red-500" />
-            <div className="absolute inset-0 bg-red-500/20 rounded-full blur-xl animate-pulse"></div>
-          </div>
+        <div className="text-center space-y-4">
+          {/* Style Selection */}
+          {!selectedStyle ? (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <h3 className="text-lg md:text-xl font-bold text-white">Choose Your Style</h3>
+                <p className="text-xs md:text-sm text-gray-400">
+                  Pick your demon hunter aesthetic
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setSelectedStyle('kpop')}
+                  className="group relative overflow-hidden rounded-xl border-2 border-purple-500/30 hover:border-purple-500 transition-all duration-300 active:scale-95"
+                >
+                  <div className="relative aspect-square">
+                    <img 
+                      src="/prompt-helpers/pop2.webp" 
+                      alt="K-Pop Style Example"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                    <div className="absolute bottom-0 left-0 right-0 p-3 text-center">
+                      <span className="block text-lg font-bold text-white">✨ K-Pop</span>
+                      <span className="block text-xs text-purple-300">Idol Vibes</span>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setSelectedStyle('hunter')}
+                  className="group relative overflow-hidden rounded-xl border-2 border-red-500/30 hover:border-red-500 transition-all duration-300 active:scale-95"
+                >
+                  <div className="relative aspect-square">
+                    <img 
+                      src="/prompt-helpers/hunters.png" 
+                      alt="Hunter Style Example"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                    <div className="absolute bottom-0 left-0 right-0 p-3 text-center">
+                      <span className="block text-lg font-bold text-white">🔥 Hunter</span>
+                      <span className="block text-xs text-red-300">Warrior Mode</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{selectedStyle === 'kpop' ? '✨' : '🔥'}</span>
+                  <span className="font-bold text-white">
+                    {selectedStyle === 'kpop' ? 'K-Pop Style' : 'Hunter Style'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedStyle(null)}
+                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  Change
+                </button>
+              </div>
+              
+              <div className="relative w-12 h-12 md:w-14 md:h-14 mx-auto">
+                <Upload className="w-12 h-12 md:w-14 md:h-14 text-red-500" />
+                <div className="absolute inset-0 bg-red-500/20 rounded-full blur-lg"></div>
+              </div>
 
-          <div className="space-y-2">
-            <h3 className="text-2xl font-bold text-white">Drop Your Photos Here</h3>
-            <p className="text-gray-400 max-w-md mx-auto">
-              Or click to browse. Supports multiple images. JPG, PNG up to 10MB each.
-            </p>
-            <p className="text-sm text-orange-400 max-w-md mx-auto pt-2">
-              ⚠️ <strong>Important:</strong> Upload photos with clear, visible human faces for best results
-            </p>
-          </div>
+              <div className="space-y-1">
+                <h3 className="text-lg md:text-xl font-bold text-white">Upload Your Selfie</h3>
+                <p className="text-xs md:text-sm text-gray-400 max-w-sm mx-auto">
+                  Tap to select or drag & drop • JPG/PNG
+                </p>
+              </div>
 
-          <button
-            onClick={handleButtonClick}
-            className="px-8 py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-full font-bold text-lg shadow-lg shadow-red-500/50 hover:shadow-xl hover:shadow-red-500/70 transition-all duration-300 hover:scale-105"
-          >
-            Select Photos
-          </button>
+              <button
+                onClick={handleButtonClick}
+                className="w-full px-6 py-3 md:py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-xl font-bold text-base md:text-lg shadow-lg shadow-red-500/50 hover:shadow-xl hover:shadow-red-500/70 transition-all duration-300 active:scale-95"
+              >
+                Choose Photo
+              </button>
+              
+              <p className="text-xs text-orange-400/80 pt-1">
+                💡 Use a clear front-facing photo
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

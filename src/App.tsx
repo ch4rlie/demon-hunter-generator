@@ -12,14 +12,19 @@ function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedImages, setProcessedImages] = useState<string[]>([]);
   const [currentPredictionId, setCurrentPredictionId] = useState<string | null>(null);
+  const [currentStyle, setCurrentStyle] = useState<'kpop' | 'hunter' | undefined>(undefined);
+  const [originalFile, setOriginalFile] = useState<File | undefined>(undefined);
 
-  const handleImageUpload = async (files: File[]) => {
+  const handleImageUpload = async (files: File[], style: 'kpop' | 'hunter') => {
+    setCurrentStyle(style);
+    setOriginalFile(files[0]); // Store the first file for "try other style"
     setIsProcessing(true);
-    setProcessedImages([]);
+    // Don't clear processed images if we already have one (for "try other style")
+    // setProcessedImages([]);
 
     // Track upload event
     if (window.plausible) {
-      window.plausible('Image Upload', { props: { count: files.length } });
+      window.plausible('Image Upload', { props: { count: files.length, style } });
     }
 
     try {
@@ -32,6 +37,7 @@ function HomePage() {
           body: (() => {
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('style', style);
             return formData;
           })(),
         });
@@ -68,7 +74,8 @@ function HomePage() {
         transformedImages.push(imageUrl);
       }
 
-      setProcessedImages(transformedImages);
+      // Append new images to existing ones (for "try other style")
+      setProcessedImages(prev => [...prev, ...transformedImages]);
       
       // Track successful transformation
       if (window.plausible) {
@@ -140,12 +147,14 @@ function HomePage() {
         onEmailSubmit={handleEmailSubmit}
         isProcessing={isProcessing}
         processedImages={processedImages}
+        currentStyle={currentStyle}
+        originalFile={originalFile}
       />
       <FeaturesSection />
       <SocialProofFeed />
       <GallerySection />
       <HowItWorksSection />
-      <CTASection onImageUpload={handleImageUpload} />
+      <CTASection />
       
       {/* Footer with disclaimer */}
       <footer className="bg-black border-t border-white/10 py-8 px-4">
